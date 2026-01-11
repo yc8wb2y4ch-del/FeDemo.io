@@ -1,0 +1,2447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>任务接点 - 物品鉴定与元素分析</title>
+    <!-- 引入 Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&family=JetBrains+Mono:wght@400;700&family=Noto+Serif+SC:wght@700;900&display=swap');
+
+        /* --- 1. 全局基础样式 --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { 
+            width: 100%; height: 100%; overflow: hidden; 
+            background-color: #000; 
+            font-family: 'Inter', "Microsoft YaHei", sans-serif; 
+        }
+
+        /* --- 2. 视频层 --- */
+        #video-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+            transition: opacity 1s ease;
+        }
+        video {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%; object-fit: cover; 
+            pointer-events: none; transition: opacity 1s ease;
+        }
+        #introVideo { opacity: 1; z-index: 1; }
+        #analysisVideo { opacity: 0; z-index: 5; }
+        #propertiesVideo { opacity: 0; z-index: 6; display: none; }
+        #trialVideo { opacity: 0; z-index: 7; display: none; }
+
+        /* --- 鉴定结案视频层 --- */
+        #conclusion-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 500; display: none; background: #000;
+        }
+        #conclusionVideo {
+            width: 100%; height: 100%; object-fit: cover;
+            pointer-events: none; 
+        }
+
+        /* --- 剧本总结视频层 --- */
+        #summary-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 700; display: none; background: #000;
+        }
+        #summaryVideo {
+            width: 100%; height: 100%; object-fit: cover;
+            pointer-events: none; /* 禁止交互 */
+        }
+
+        /* --- 3. 最终背景层 --- */
+        #final-bg {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 20; opacity: 0; pointer-events: none;
+            display: none; 
+            background-image: url('https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/497f2b70528a4d44babbdcef36493a04~tplv-tb4s082cfz-aigc_resize:2400:2400.webp?lk3s=43402efa&x-expires=1770336000&x-signature=n%2BYBBwvXbcw%2FeQGtucK3obQFtC8%3D&format=.webp');
+            background-size: 100% 100%;
+            background-position: center;
+            filter: blur(15px) brightness(0.6); 
+            transition: opacity 1.5s ease;
+        }
+
+        /* --- 4. 剧情 UI 层 --- */
+        #start-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 50; background: black; display: flex;
+            justify-content: center; align-items: center; color: #fff; cursor: pointer;
+        }
+
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100;
+            display: flex; flex-direction: column; opacity: 0;
+            transition: opacity 0.5s ease-in; 
+            pointer-events: none;
+        }
+
+        #display-area {
+            height: 75%; width: 100%; position: relative;
+            display: flex; justify-content: center; align-items: center; 
+            perspective: 1000px;
+            transition: height 0.6s cubic-bezier(0.25, 1, 0.5, 1); 
+        }
+        #display-area.fullscreen-mode {
+            height: 100%;
+        }
+
+        .item-image {
+            width: 300px; height: 300px; object-fit: cover; 
+            border-radius: 50%; border: 5px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 0 40px rgba(0,0,0, 0.8); transition: all 0.5s ease;
+            pointer-events: auto; 
+        }
+        #package-img { display: block; cursor: pointer; animation: glow 2s infinite ease-in-out; }
+        #package-img:hover { transform: scale(1.1) rotate(5deg); }
+        #rebar-img { display: none; opacity: 0; transform: scale(0.5); cursor: pointer; }
+        #rebar-img:hover { transform: scale(1.1); border-color: #4a90e2; }
+
+        #card-trigger-container {
+            position: absolute; left: 0; top: 0; width: 50%; height: 100%;
+            display: none; justify-content: center; align-items: center;
+        }
+        .click-target-area {
+            width: 300px; height: 400px; cursor: pointer; position: relative;
+            display: flex; justify-content: center; align-items: center;
+            pointer-events: auto;
+        }
+        .click-guide-wrapper { display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+        .guide-circle {
+            width: 80px; height: 80px; border-radius: 50%; border: 3px solid #4a90e2;
+            position: relative; animation: ripple 1.5s infinite; box-shadow: 0 0 15px #4a90e2;
+        }
+        .guide-text {
+            margin-top: 20px; color: #4a90e2; font-size: 1.2rem; font-weight: bold;
+            text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 0 10px rgba(74, 144, 226, 0.8);
+            background: rgba(0, 0, 0, 0.6); padding: 5px 15px; border-radius: 20px;
+            border: 1px solid rgba(74, 144, 226, 0.3);
+        }
+
+        #dialogue-area {
+            height: 25%; width: 100%; background: rgba(0, 0, 0, 0.85);
+            border-top: 2px solid #4a90e2; display: flex; align-items: center;
+            padding: 20px 40px; color: #fff; box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+            transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+            overflow: hidden;
+            opacity: 1;
+        }
+        #dialogue-area.collapsed {
+            height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+            border-top: none;
+        }
+
+        .avatar-box { width: 120px; height: 120px; flex-shrink: 0; margin-right: 25px; border: 3px solid #fff; border-radius: 8px; overflow: hidden; background-color: #333; }
+        .avatar-box img { width: 100%; height: 100%; object-fit: cover; }
+        .text-box { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; }
+        .npc-name { font-size: 1.2rem; font-weight: bold; color: #4a90e2; margin-bottom: 8px; }
+        .dialogue-text { font-size: 1rem; line-height: 1.6; letter-spacing: 1px; transition: opacity 0.3s; }
+        
+        .dialogue-action-btn {
+            margin-left: 20px;
+            padding: 10px 25px;
+            background: #10b981;
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            animation: pulse 2s infinite;
+            display: none; 
+        }
+        .dialogue-action-btn:hover { transform: scale(1.05); background: #059669; }
+
+        /* --- 5. 最终卡牌层 --- */
+        #final-card-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 30; opacity: 0; display: none; 
+            perspective: 1500px;
+            color: #f8fafc;
+            transition: opacity 1s ease;
+        }
+
+        /* 左侧区域：辅助定位 (33.33%) */
+        .left-zone {
+            position: absolute; left: 0; top: 0; height: 100%; width: 33.33%;
+            pointer-events: none; z-index: 10;
+        }
+        
+        /* 右侧区域 */
+        .right-zone {
+            position: absolute; left: 0; top: 0; height: 100%; width: 100%; 
+            pointer-events: none; 
+            z-index: 20;
+        }
+
+        /* --- 核心定位容器 --- */
+        .right-content-anchor {
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translateY(-55px); 
+            display: flex; flex-direction: column;
+            pointer-events: auto; 
+        }
+
+        .npc-row { display: flex; align-items: center; margin-bottom: 20px; width: 100%; }
+        .task-avatar {
+            width: 110px; height: 110px; flex-shrink: 0; border-radius: 50%;
+            border: 3px solid #4a90e2; overflow: hidden; box-shadow: 0 0 20px rgba(74, 144, 226, 0.5);
+            margin-right: 15px; background: #000;
+        }
+        .task-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+        .task-bubble {
+            background: rgba(15, 23, 42, 0.9); border: 1px solid #4a90e2; border-radius: 12px;
+            padding: 20px; color: #e2e8f0; font-size: 1rem; line-height: 1.6;
+            position: relative; box-shadow: 0 5px 20px rgba(0,0,0,0.5); max-width: 400px; 
+        }
+        .task-bubble::after, .task-bubble::before { content: ''; position: absolute; top: 50%; transform: translateY(-50%); width: 0; height: 0; border-style: solid; }
+        .task-bubble::after { left: -11px; border-width: 10px 11px 10px 0; border-color: transparent #4a90e2 transparent transparent; }
+        .task-bubble::before { left: -10px; border-width: 10px 10px 10px 0; border-color: transparent rgba(15, 23, 42, 0.9) transparent transparent; z-index: 1; }
+
+        .controls-area { width: 100%; max-width: 500px; padding-left: 125px; }
+        .progress-wrapper { width: 100%; margin-bottom: 20px; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); }
+        .progress-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: #94a3b8; margin-bottom: 8px; }
+        .progress-track { width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #4a90e2, #60a5fa); transition: width 0.5s ease; box-shadow: 0 0 10px rgba(74, 144, 226, 0.5); }
+
+        .verify-btn { width: 100%; padding: 15px; border: none; border-radius: 8px; font-size: 1.1rem; font-weight: bold; cursor: pointer; transition: all 0.3s; position: relative; letter-spacing: 1px; }
+        .verify-btn:disabled { background: #1e293b; color: #64748b; cursor: not-allowed; border: 1px solid #334155; }
+        .verify-btn:disabled:hover::after { content: "请仔细核对元素基础信息"; position: absolute; bottom: 110%; left: 50%; transform: translateX(-50%); background: rgba(220, 38, 38, 0.9); color: #fff; padding: 8px 12px; border-radius: 4px; font-size: 0.85rem; white-space: nowrap; pointer-events: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .verify-btn:disabled:hover::before { content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0 6px; border-style: solid; border-color: rgba(220, 38, 38, 0.9) transparent transparent transparent; }
+        .verify-btn.active { background: #4a90e2; color: #fff; box-shadow: 0 0 20px rgba(74, 144, 226, 0.4); animation: pulse-btn 2s infinite; }
+        .verify-btn.active:hover { background: #3b82f6; transform: translateY(-2px); }
+        @keyframes pulse-btn { 0% { box-shadow: 0 0 0 0 rgba(74, 144, 226, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(74, 144, 226, 0); } 100% { box-shadow: 0 0 0 0 rgba(74, 144, 226, 0); } }
+
+        :root {
+            --theme-color: #60a5fa; --card-bg-color: rgba(15, 23, 42, 0.95); --accent-gradient: linear-gradient(135deg, #e2e8f0 0%, #94a3b8 100%);
+            --c-alkali: #fca5a5; --c-alkaline-e: #fdba74; --c-transition: #fde047; --c-main-metal: #86efac; --c-metalloid: #2dd4bf; --c-nonmetal: #67e8f9;
+            --c-halogen: #a5b4fc; --c-noble: #d8b4fe; --c-lanthanide: #f0abfc; --c-actinide: #fda4af;
+            
+            /* 性质探秘模块变量 */
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #e2e8f0;
+            --text-sub: #94a3b8;
+            --accent-blue: #38bdf8;
+            --accent-red: #f43f5e;
+            --accent-green: #10b981;
+            --accent-yellow: #fbbf24;
+            --atom-orbit: rgba(255, 255, 255, 0.1);
+            --electron-color: #38bdf8;
+
+            /* 最终报告页变量 */
+            --report-primary-color: #2c3e50;
+            --report-accent-color: #d63031;
+            --report-bg-color: #f4f7f6;
+            --report-card-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        /* --- 模态框通用 --- */
+        .modal-overlay { 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
+            z-index: 10000; 
+            display: none; justify-content: center; align-items: center; 
+            opacity: 0; transition: opacity 0.3s; 
+        }
+        .modal-overlay.active { display: flex; opacity: 1; }
+
+        #fullscreenContainer { background: radial-gradient(circle, #1e293b 0%, #000 100%); perspective: 1000px; display: none; }
+        #fullscreenContainer.active { display: block; opacity: 1; }
+        
+        #imageModal { background: rgba(0,0,0,0.9); backdrop-filter: blur(15px); z-index: 20000; }
+        .img-wrapper { max-width: 90%; max-height: 85%; display: flex; flex-direction: column; align-items: center; position: relative; }
+        .img-wrapper img { max-width: 100%; max-height: 80vh; border-radius: 8px; box-shadow: 0 0 50px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); }
+        .img-caption { margin-top: 15px; color: #fff; font-size: 1.2rem; font-weight: bold; letter-spacing: 1px; }
+        .modal-close-btn { position: absolute; top: 30px; right: 30px; padding: 10px 20px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; border-radius: 30px; cursor: pointer; z-index: 10000; font-weight: bold; transition: 0.2s; }
+        .modal-close-btn:hover { background: rgba(255,255,255,0.3); }
+
+        /* --- 卡牌本体 (33.33%) --- */
+        .card-wrapper {
+            position: absolute; 
+            left: 33.33%; 
+            top: 50%; 
+            transform: translate(-50%, -50%) rotateY(0deg); 
+            width: 400px; height: 720px; 
+            transform-style: preserve-3d; transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+            pointer-events: auto; 
+            z-index: 50;
+        }
+        .card-wrapper.flipped { transform: translate(-50%, -50%) rotateY(180deg); }
+
+        .face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; border-radius: 24px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6); background: var(--card-bg-color); backdrop-filter: blur(20px); }
+        .front { background: linear-gradient(160deg, #1e293b, #0f172a); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 2; cursor: pointer; }
+        .front-symbol { font-size: 8.5rem; font-weight: 900; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0px; letter-spacing: -4px; filter: drop-shadow(0 0 20px rgba(255,255,255,0.1)); line-height: 1; }
+        .front-zh-name { font-family: 'Noto Serif SC', serif; font-size: 4rem; color: #f8fafc; margin-top: 10px; text-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        .front-en-name { font-size: 1.2rem; color: #64748b; letter-spacing: 4px; text-transform: uppercase; margin-top: 5px; font-weight: 500; }
+        .front-number { position: absolute; top: 30px; left: 30px; font-family: 'JetBrains Mono'; font-size: 1.2rem; color: var(--theme-color); border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 20px; }
+        .click-hint { position: absolute; bottom: 40px; font-size: 0.8rem; color: rgba(255,255,255,0.3); animation: pulse 2s infinite; letter-spacing: 1px; }
+
+        .back { transform: rotateY(180deg); display: flex; flex-direction: column; z-index: 1; }
+        .back-header { height: 50px; padding: 0 20px; display: flex; justify-content: flex-end; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .close-btn { cursor: pointer; font-size: 1.5rem; color: rgba(255,255,255,0.5); transition: 0.2s; }
+        .close-btn:hover { color: #fff; }
+
+        .data-layer { display: flex; height: 260px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .model-area { width: 60%; position: relative; cursor: grab; background: radial-gradient(circle at center, rgba(96, 165, 250, 0.05) 0%, transparent 70%); overflow: hidden; border-right: 1px solid rgba(255,255,255,0.05); }
+        .model-area:active { cursor: grabbing; }
+        .expand-btn { position: absolute; bottom: 10px; right: 10px; width: 32px; height: 32px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.3); border-radius: 8px; color: #fff; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.2s; z-index: 10; }
+        .expand-btn:hover { background: #fff; color: #000; }
+        .info-area { width: 40%; padding: 20px; display: flex; flex-direction: column; justify-content: center; gap: 15px; }
+        .pos-label { font-size: 0.8rem; color: #64748b; margin-bottom: 4px; }
+        .pos-value { font-size: 1.1rem; font-weight: 700; color: #f1f5f9; line-height: 1.2; }
+        .pos-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: var(--theme-color); font-size: 0.8rem; padding: 8px; border-radius: 6px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .pos-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+        .properties-layer { flex-grow: 1; padding: 20px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+        .properties-layer::-webkit-scrollbar { width: 4px; }
+        .properties-layer::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+        .section-header { font-size: 0.9rem; font-weight: 700; color: #94a3b8; margin-bottom: 12px; margin-top: 20px; display: flex; align-items: center; gap: 8px; }
+        .section-header:first-child { margin-top: 0; }
+        .section-header::before { content: ''; width: 4px; height: 14px; background: var(--theme-color); border-radius: 2px; }
+
+        .substance-card { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 12px; margin-bottom: 10px; border: 1px solid transparent; transition: 0.3s; cursor: pointer; position: relative; }
+        .substance-card:hover { border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.08); transform: translateX(2px); }
+        .sub-icon { font-size: 1.5rem; width: 40px; text-align: center; }
+        .sub-info { display: flex; flex-direction: column; flex-grow: 1; }
+        .sub-name { font-size: 0.95rem; font-weight: 600; color: #f1f5f9; }
+        .sub-desc { font-size: 0.8rem; color: #64748b; margin-top: 2px; }
+        .expand-action { margin-left: 10px; color: rgba(255,255,255,0.3); transition: 0.2s; }
+        .substance-card:hover .expand-action { color: var(--theme-color); transform: scale(1.1); }
+
+        .fingerprint-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .fp-item { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.03); }
+        .fp-label { font-size: 0.8rem; color: #64748b; margin-bottom: 4px; }
+        .fp-value { font-family: 'JetBrains Mono'; font-size: 0.95rem; color: #e2e8f0; font-weight: 500; }
+        .fp-unit { font-size: 0.75rem; color: #475569; margin-left: 2px; }
+
+        .stage { width: 100%; height: 100%; transform-style: preserve-3d; display: flex; justify-content: center; align-items: center; }
+        .atom-group { position: relative; width: 0; height: 0; transform-style: preserve-3d; transition: transform 0.1s; }
+        .billboard-particle { position: absolute; border-radius: 50%; transform-style: preserve-3d; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .nucleus-p { width: 12px; height: 12px; background: radial-gradient(circle at 30% 30%, #fca5a5, #ef4444, #7f1d1d); }
+        .nucleus-n { width: 12px; height: 12px; background: radial-gradient(circle at 30% 30%, #e2e8f0, #64748b, #1e293b); }
+        .electron { width: 6px; height: 6px; background: radial-gradient(circle at 30% 30%, #fff, #38bdf8); box-shadow: 0 0 6px #38bdf8; }
+        .orbit-ring { position: absolute; top: 50%; left: 50%; border-radius: 50%; border: 1px solid rgba(255,255,255,0.15); transform-style: preserve-3d; pointer-events: none; }
+
+        .pt-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.92); backdrop-filter: blur(10px); z-index: 100; display: none; flex-direction: column; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s; }
+        .pt-overlay.active { display: flex; opacity: 1; }
+        .pt-container { width: 95%; max-width: 900px; display: flex; flex-direction: column; gap: 10px; }
+        .pt-header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px; color: #fff; }
+        .pt-legend-box { display: flex; flex-wrap: wrap; gap: 8px; max-width: 700px; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: #cbd5e1; }
+        .legend-color { width: 12px; height: 12px; border-radius: 2px; }
+        .pt-grid { display: grid; grid-template-columns: repeat(18, 1fr); gap: 3px; padding: 10px; background: #0f172a; border-radius: 12px; border: 1px solid #334155; }
+        .pt-cell { aspect-ratio: 1; border-radius: 3px; display: flex; justify-content: center; align-items: center; font-size: 0.65rem; color: rgba(0,0,0,0.7); font-weight: 700; cursor: default; position: relative; background: #334155; }
+        .pt-cell.empty { background: transparent; pointer-events: none; }
+        .pt-c-alkali { background: var(--c-alkali); } .pt-c-alkaline-e { background: var(--c-alkaline-e); } .pt-c-transition { background: var(--c-transition); } .pt-c-main-metal { background: var(--c-main-metal); } .pt-c-metalloid { background: var(--c-metalloid); } .pt-c-nonmetal { background: var(--c-nonmetal); } .pt-c-halogen { background: var(--c-halogen); } .pt-c-noble { background: var(--c-noble); } .pt-c-lanthanide { background: var(--c-lanthanide); } .pt-c-actinide { background: var(--c-actinide); }
+        .pt-cell.target { border: 2px solid #fff; transform: scale(1.3); z-index: 10; box-shadow: 0 0 20px rgba(255,255,255,0.5); color: #000; }
+        .pt-close-btn { font-size: 2rem; cursor: pointer; color: #fff; line-height: 1; }
+
+        @keyframes ripple { 0% { transform: scale(0.5); opacity: 1; border-width: 5px; } 100% { transform: scale(1.5); opacity: 0; border-width: 0px; } }
+        @keyframes glow { 0% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); border-color: rgba(255, 255, 255, 0.8); } 50% { box-shadow: 0 0 50px rgba(255, 215, 0, 1); border-color: #fff; } 100% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.4); border-color: rgba(255, 255, 255, 0.8); } }
+        @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.8; } }
+
+        /* ==================== 性质探秘模块专用样式 ==================== */
+        #complex-analysis-wrapper {
+            width: 100%; height: 100%;
+            display: none; /* 初始隐藏 */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-y: auto;
+            pointer-events: auto;
+        }
+
+        .view-section {
+            width: 100%;
+            max-width: 1100px;
+            display: none; 
+            flex-direction: column;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            padding-bottom: 50px;
+        }
+        
+        /* 增加顶部距离 */
+        #chemical-view, #physical-view {
+            padding-top: 220px; /* 显著下移 */
+        }
+
+        #home-view {
+            flex-direction: row;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            align-items: stretch; /* 确保高度一致 */
+        }
+
+        .module-container {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            width: 95%; 
+            max-width: 1000px;
+            margin-bottom: 30px;
+            box-sizing: border-box;
+            position: relative;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .nav-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 40px;
+            flex: 1;
+            min-width: 300px;
+            max-width: 450px;
+            cursor: pointer;
+            border: 2px solid rgba(255,255,255,0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            height: auto;
+            justify-content: space-between; /* 内容分散对齐 */
+        }
+
+        .nav-card:hover { transform: translateY(-10px); border-color: var(--accent-blue); box-shadow: 0 10px 30px rgba(56, 189, 248, 0.15); }
+        .nav-icon { font-size: 4rem; margin-bottom: 20px; transition: transform 0.3s; }
+        .nav-card:hover .nav-icon { transform: scale(1.1); }
+        .nav-card h2 { font-size: 1.8rem; margin-bottom: 15px; color: #fff; }
+        .nav-desc { color: var(--text-sub); line-height: 1.6; margin-bottom: 20px; }
+
+        .status-badge { position: absolute; top: 20px; right: 20px; padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; transition: all 0.3s; }
+        .status-badge.pending { background: rgba(255, 255, 255, 0.1); color: var(--text-sub); border: 1px solid rgba(255, 255, 255, 0.2); }
+        .status-badge.completed { background: var(--accent-green); color: #fff; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
+        .nav-card.completed { border-color: var(--accent-green); background: linear-gradient(145deg, #1e293b 0%, rgba(16, 185, 129, 0.05) 100%); }
+
+        .completion-summary { margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.3); border-radius: 10px; width: 100%; text-align: left; display: none; border-left: 3px solid var(--accent-green); }
+        .nav-card.completed .completion-summary { display: block; animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .back-nav { align-self: flex-start; margin-bottom: 15px; color: var(--text-sub); cursor: pointer; display: none; align-items: center; font-size: 1rem; padding: 8px 15px; background: rgba(255,255,255,0.05); border-radius: 8px; transition: all 0.2s; margin-left: max(5%, calc((100% - 1000px) / 2)); }
+        .back-nav:hover { color: var(--accent-blue); background: rgba(255,255,255,0.1); }
+        .back-nav::before { content: '←'; margin-right: 8px; font-weight: bold; }
+
+        .top-module { display: flex; flex-wrap: wrap; gap: 40px; justify-content: center; }
+        .section-title { width: 100%; font-size: 1.2rem; font-weight: 500; margin-bottom: 10px; color: var(--text-main); border-left: 4px solid var(--accent-blue); padding-left: 10px; }
+        
+        .atom-wrapper { flex: 1; min-width: 300px; display: flex; flex-direction: column; align-items: center; border-right: 1px solid rgba(255,255,255,0.05); padding-right: 20px; }
+        .atom-container { width: 280px; height: 280px; position: relative; display: flex; justify-content: center; align-items: center; margin-top: 20px; }
+        .nucleus { width: 30px; height: 30px; background: radial-gradient(circle, #ff5722 30%, #bf360c 100%); border-radius: 50%; position: absolute; z-index: 10; box-shadow: 0 0 15px #ff5722; display: flex; justify-content: center; align-items: center; font-size: 12px; font-weight: bold; color: white; }
+        .orbit { position: absolute; border: 1px solid var(--atom-orbit); border-radius: 50%; transform-style: preserve-3d; }
+        .electron { position: absolute; width: 8px; height: 8px; background: var(--electron-color); border-radius: 50%; box-shadow: 0 0 8px var(--electron-color); top: 50%; margin-top: -4px; }
+        .orbit-1 { width: 50px; height: 50px; animation: spin 2s linear infinite; }
+        .orbit-2 { width: 90px; height: 90px; animation: spin 3s linear infinite; }
+        .orbit-3 { width: 140px; height: 140px; animation: spin 5s linear infinite; }
+        .orbit-4 { width: 200px; height: 200px; animation: spin 7s linear infinite; }
+        .orbit-1 .electron:nth-child(1) { transform: rotate(0deg) translateX(25px); }
+        .orbit-1 .electron:nth-child(2) { transform: rotate(180deg) translateX(25px); }
+        .orbit-4 .electron:nth-child(1) { transform: rotate(0deg) translateX(100px); }
+        .orbit-4 .electron:nth-child(2) { transform: rotate(180deg) translateX(100px); }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .radar-wrapper { flex: 1; min-width: 350px; display: flex; flex-direction: column; align-items: center; position: relative; }
+        .chart-container { width: 360px; height: 320px; position: relative; margin: 0 auto; }
+        .radar-label { position: absolute; color: var(--text-sub); font-size: 0.85rem; background: rgba(30, 41, 59, 0.8); padding: 4px 8px; border-radius: 4px; cursor: help; transition: all 0.2s; border: 1px solid transparent; white-space: nowrap; z-index: 20; }
+        .radar-label:hover { color: var(--accent-blue); border-color: var(--accent-blue); background: rgba(30, 41, 59, 1); transform: scale(1.05); z-index: 30; }
+        .lbl-1 { top: 0; left: 50%; transform: translateX(-50%); }
+        .lbl-2 { top: 25%; right: -10px; }
+        .lbl-3 { bottom: 20%; right: -10px; }
+        .lbl-4 { bottom: 20%; left: -10px; }
+        .lbl-5 { top: 25%; left: -10px; }
+
+        .custom-tooltip { position: absolute; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--accent-blue); padding: 15px; border-radius: 8px; color: #fff; width: 260px; pointer-events: none; opacity: 0; transition: opacity 0.2s; z-index: 100; box-shadow: 0 10px 25px rgba(0,0,0,0.5); backdrop-filter: blur(5px); font-size: 0.9rem; line-height: 1.5; }
+        .tooltip-title { color: var(--accent-blue); font-weight: bold; margin-bottom: 5px; display: block; font-size: 1rem; }
+        .tooltip-value { color: #fff; font-weight: bold; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; margin-left: 8px;}
+        .tooltip-desc { color: var(--text-sub); margin: 8px 0; display: block; font-size: 0.85rem; }
+        .tooltip-logic { color: var(--accent-green); display: block; font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 8px; margin-top: 8px;}
+        .tooltip-logic.loss { color: var(--accent-red); }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 40px; }
+        .stat-item { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-label { font-size: 0.8rem; color: var(--text-sub); margin-bottom: 5px; }
+        .stat-value { font-size: 1.1rem; font-weight: bold; }
+        
+        .slider-container { position: relative; margin: 40px 0; padding: 0 20px; }
+        input[type=range] { -webkit-appearance: none; width: 100%; height: 12px; border-radius: 6px; background: linear-gradient(90deg, var(--accent-red) 0%, #cbd5e1 50%, var(--accent-green) 100%); outline: none; cursor: pointer; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; border-radius: 50%; background: #fff; cursor: pointer; box-shadow: 0 0 15px rgba(255,255,255,0.5); border: 4px solid var(--card-bg); transition: transform 0.1s; }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.1); }
+        .slider-labels { display: flex; justify-content: space-between; font-weight: bold; margin-top: 15px; font-size: 0.9rem; }
+
+        /* 修改：强制按钮文字为白色 */
+        .btn-confirm { display: block; margin: 20px auto 0; padding: 12px 40px; background: var(--accent-blue); color: #fff; border: none; border-radius: 30px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(56, 189, 248, 0.3); }
+        .btn-confirm:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4); }
+        .btn-confirm:disabled { background: var(--text-sub); cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-next { background: var(--accent-green); color: #fff; animation: pulse 2s infinite; }
+        .btn-home { background: var(--accent-blue); color: #fff; animation: none; margin-top: 20px; }
+        .btn-home:hover { background: #fff; color: #000; } /* hover时反转颜色增加交互感 */
+
+        .feedback-msg { text-align: center; min-height: 20px; margin-bottom: 20px; padding: 15px; border-radius: 8px; display: none; }
+        .feedback-error { background: rgba(244, 63, 94, 0.1); color: var(--accent-red); border: 1px solid var(--accent-red); }
+        .feedback-success { background: rgba(16, 185, 129, 0.1); color: var(--accent-green); border: 1px solid var(--accent-green); }
+
+        .real-marker { position: absolute; top: -40px; left: 20%; transform: translateX(-50%); background: #fff; color: #000; padding: 5px 10px; border-radius: 4px; font-weight: bold; font-size: 0.8rem; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+        .real-marker::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border-width: 6px 6px 0; border-style: solid; border-color: #fff transparent transparent transparent; }
+        .real-marker.visible { opacity: 1; }
+
+        .video-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px; }
+        .video-card { background: rgba(0,0,0,0.2); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid rgba(255,255,255,0.05); }
+        .video-container { position: relative; width: 100%; padding-top: 56.25%; background: #000; overflow: hidden; }
+        .video-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .video-cover { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; z-index: 20; transition: opacity 0.3s; }
+        .cover-icon { width: 60px; height: 60px; background: rgba(56, 189, 248, 0.2); border-radius: 50%; display: flex; justify-content: center; align-items: center; border: 2px solid var(--accent-blue); margin-bottom: 15px; transition: transform 0.2s; }
+        .cover-icon::after { content: ''; display: block; width: 0; height: 0; border-left: 18px solid #fff; border-top: 10px solid transparent; border-bottom: 10px solid transparent; margin-left: 4px; }
+        .video-cover:hover .cover-icon { transform: scale(1.1); background: var(--accent-blue); }
+        .video-cover p { margin: 0; font-weight: bold; color: #fff; letter-spacing: 1px; }
+        video.video-layer { object-fit: contain; pointer-events: auto; }
+        .center-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; cursor: pointer; pointer-events: none; }
+        .icon-play-center { width: 50px; height: 50px; background: rgba(0,0,0,0.5); border-radius: 50%; display: none; justify-content: center; align-items: center; border: 2px solid rgba(255,255,255,0.8); backdrop-filter: blur(2px); }
+        .icon-play-center::after { content: ''; display: block; width: 0; height: 0; border-left: 16px solid #fff; border-top: 10px solid transparent; border-bottom: 10px solid transparent; margin-left: 4px; }
+        .icon-replay-center { background: var(--accent-blue); color: #000; padding: 10px 25px; border-radius: 25px; font-weight: bold; display: none; pointer-events: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .icon-replay-center:hover { background: #fff; }
+        .fullscreen-btn { position: absolute; bottom: 10px; right: 10px; width: 32px; height: 32px; background: rgba(0,0,0,0.5); border-radius: 4px; z-index: 30; cursor: pointer; display: none; justify-content: center; align-items: center; color: #fff; font-size: 20px; transition: background 0.2s; }
+        .fullscreen-btn:hover { background: var(--accent-blue); }
+        .explanation-box { padding: 20px; background: rgba(56, 189, 248, 0.05); border-top: 2px solid var(--accent-blue); display: none; animation: slideDown 0.5s ease forwards; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .exp-title { color: var(--accent-blue); font-weight: bold; margin-bottom: 8px; font-size: 1.1rem; }
+        .exp-text { font-size: 0.95rem; line-height: 1.6; color: var(--text-main); }
+        .highlight { color: var(--accent-yellow); font-weight: bold; }
+
+        .continue-container { width: 100%; display: flex; justify-content: center; margin-top: 30px; opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+        .continue-container.show { opacity: 1; pointer-events: auto; }
+
+        #verification-sub-view { display: none; width: 100%; opacity: 0; transform: translateY(20px); transition: all 0.5s; }
+
+        @media (max-width: 768px) {
+            .top-module { flex-direction: column; }
+            .atom-wrapper { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px; padding-right: 0; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+            .chart-container { width: 100%; height: 300px; }
+            .video-grid { grid-template-columns: 1fr; }
+            #home-view { flex-direction: column; }
+            .back-nav { margin-left: 0; }
+        }
+
+        /* --- 6. 试炼点击引导层 --- */
+        #trial-click-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 200; display: none; justify-content: center; align-items: center;
+            cursor: pointer;
+        }
+
+        /* --- 7. 元素归位模块 (Puzzle) --- */
+        #puzzle-module {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #1e293b; 
+            z-index: 300; 
+            display: none; flex-direction: column; align-items: center;
+            padding: 20px; overflow-y: auto;
+            color: #fff;
+        }
+
+        /* Puzzle 专用样式 */
+        .game-header { display: flex; gap: 30px; margin-bottom: 20px; width: 100%; max-width: 1200px; align-items: center; }
+        .dragger-container { width: 120px; height: 120px; background: rgba(255,255,255,0.05); border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; display: flex; justify-content: center; align-items: center; }
+        
+        /* 修改：恢复较小的元素块样式 */
+        .element-block { width: 64px; height: 64px; background: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: grab; box-shadow: 0 10px 20px rgba(0,0,0,0.3); transition: transform 0.2s; z-index: 100; }
+        .element-block:active { cursor: grabbing; transform: scale(1.05); }
+        .element-block.hidden { display: none; }
+        
+        /* 修改：调小字体，确保不溢出 64px 的框 */
+        .element-symbol { font-size: 1.4rem; font-weight: 900; line-height: 1; }
+        .element-name { font-size: 0.5rem; font-weight: 700; opacity: 0.7; }
+        
+        .feedback-panel { flex-grow: 1; background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border-left: 5px solid #94a3b8; display: flex; flex-direction: column; justify-content: center; transition: border-color 0.3s, background 0.3s; }
+        .feedback-title { font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; margin-bottom: 5px; letter-spacing: 1px; }
+        .feedback-content { font-size: 1.1rem; line-height: 1.5; }
+        .pt-wrapper { background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); width: 100%; max-width: 1280px; overflow-x: auto; }
+        .legend-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #334155; font-weight: 700; }
+        .legend-color { width: 24px; height: 24px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.1); }
+        .pt-grid-puzzle { display: grid; grid-template-columns: 45px repeat(18, 1fr); gap: 4px; align-items: center; }
+        .pt-label { color: #64748b; font-weight: 700; font-size: 0.8rem; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; user-select: none; line-height: 1.2; height: 100%; }
+        .pt-label .roman { font-size: 0.6rem; opacity: 0.8; font-weight: 600; margin-top: 2px; }
+        .corner-header { position: relative; width: 100%; height: 100%; font-size: 0.7rem; color: #94a3b8; }
+        .corner-header span { position: absolute; }
+        .corner-header .txt-group { top: 0; right: 0; transform: translate(5px, -5px); }
+        .corner-header .txt-period { bottom: 0; left: 0; transform: translate(-5px, 5px); }
+        .corner-header::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to top right, transparent calc(50% - 1px), #cbd5e1, transparent calc(50% + 1px)); }
+        .pt-cell-puzzle { aspect-ratio: 1; border-radius: 3px; position: relative; transition: transform 0.2s; border: 1px solid rgba(0,0,0,0.05); }
+        .pt-cell-puzzle.empty { background: transparent; border: none; pointer-events: none; }
+        .pt-cell-puzzle.gap-row { grid-column: 1 / -1; height: 15px; pointer-events: none; border: none; }
+        .pt-cell-puzzle.droppable:hover { transform: scale(1.1); z-index: 5; box-shadow: 0 0 10px rgba(0,0,0,0.2); }
+        .pt-cell-puzzle.drag-over { transform: scale(1.3) !important; z-index: 10; border: 2px solid #333; box-shadow: 0 0 15px rgba(0,0,0,0.3); }
+        .bg-alkali { background: var(--c-alkali); } .bg-alkaline-e { background: var(--c-alkaline-e); } .bg-transition { background: var(--c-transition); } .bg-lanthanide { background: var(--c-lanthanide); } .bg-actinide { background: var(--c-actinide); } .bg-main-metal { background: var(--c-main-metal); } .bg-metalloid { background: var(--c-metalloid); } .bg-nonmetal { background: var(--c-nonmetal); } .bg-halogen { background: var(--c-halogen); } .bg-noble { background: var(--c-noble); }
+        .pt-cell-puzzle.filled { background: #fff !important; border: 3px solid var(--c-transition); display: flex; justify-content: center; align-items: center; font-weight: 900; color: #1e293b; font-size: 1.2vw; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 0 0 20px var(--c-transition); z-index: 20; }
+        @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1.2); opacity: 1; } }
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
+        
+        /* 头部按钮容器 */
+        .header-controls { display: flex; flex-direction: column; gap: 10px; margin-left: auto; }
+        .reset-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        .reset-btn:hover { background: #fff; color: #000; }
+        
+        /* 完成归位按钮样式 */
+        .complete-btn { 
+            background: #10b981; 
+            color: #fff; 
+            border: 1px solid #10b981; 
+            padding: 8px 16px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            transition: 0.2s; 
+            font-weight: bold;
+            display: none; /* 初始隐藏 */
+            animation: pulse-btn 2s infinite;
+        }
+        .complete-btn:hover { background: #059669; transform: translateY(-2px); }
+
+        /* ==================== 8. 最终鉴定报告层 (新增) ==================== */
+        #final-report-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 600; display: none; /* 初始隐藏 */
+            justify-content: center; align-items: center;
+            background-color: var(--report-bg-color);
+            color: #333;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        .report-container {
+            background: #fff;
+            width: 1200px;
+            max-width: 95%;
+            border-radius: 12px;
+            box-shadow: var(--report-card-shadow);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #ddd;
+        }
+
+        .report-header {
+            background: var(--report-primary-color);
+            color: #fff;
+            padding: 20px 30px;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .report-id { font-size: 0.9rem; opacity: 0.7; font-family: monospace; }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            gap: 30px;
+            padding: 40px;
+            min-height: 400px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .card-section { display: flex; justify-content: center; align-items: center; }
+
+        .fe-card {
+            width: 240px; height: 340px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 15px; border: 2px solid #b0c4de;
+            position: relative;
+            box-shadow: inset 0 0 20px rgba(255,255,255,0.5), 5px 10px 15px rgba(0,0,0,0.2);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            overflow: hidden;
+        }
+
+        .watermark {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 20px, rgba(255,255,255,0.1) 20px, rgba(255,255,255,0.1) 40px);
+            pointer-events: none; z-index: 1;
+        }
+        
+        .watermark-text {
+            position: absolute; font-size: 4rem; font-weight: bold; color: rgba(0,0,0,0.03);
+            transform: rotate(-45deg); z-index: 0; white-space: nowrap;
+        }
+
+        .element-number { font-size: 2rem; position: absolute; top: 20px; left: 20px; font-weight: bold; color: #555; }
+        .element-symbol {
+            font-size: 6rem; font-weight: 800;
+            background: linear-gradient(to bottom, #555, #222);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            z-index: 2;
+        }
+        .element-name { font-size: 1.5rem; margin-top: 10px; color: #444; z-index: 2; }
+        .element-mass { margin-top: 5px; font-family: monospace; color: #666; z-index: 2; }
+
+        .core-data-section {
+            padding: 10px;
+            border-right: 1px dashed #ccc; border-left: 1px dashed #ccc;
+            padding-left: 30px; padding-right: 30px;
+        }
+
+        .report-section-title {
+            font-size: 1.2rem; color: var(--report-primary-color);
+            border-bottom: 2px solid var(--report-primary-color);
+            padding-bottom: 10px; margin-bottom: 20px; font-weight: bold;
+        }
+
+        .data-group { margin-bottom: 25px; }
+        .data-label { font-size: 0.9rem; color: #666; margin-bottom: 5px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+        .data-value { font-size: 1.1rem; color: #222; font-weight: 500; line-height: 1.6; }
+
+        .tags-container { display: flex; gap: 10px; margin-top: 10px; }
+        .tag { padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
+        .tag-magnetic { background-color: #e8f4fd; color: #3498db; border: 1px solid #3498db; }
+        .tag-structure { background-color: #fef9e7; color: #f1c40f; border: 1px solid #f1c40f; }
+
+        .feedback-section { display: flex; flex-direction: column; }
+        .image-container {
+            width: 100%; height: 200px; border-radius: 8px; overflow: hidden;
+            margin-bottom: 20px; position: relative; border: 1px solid #eee;
+        }
+        .image-container img { width: 100%; height: 100%; object-fit: cover; filter: contrast(1.1) brightness(1.1); }
+        .shine {
+            position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+            background: linear-gradient(to right, rgba(255,255,255,0) 0%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0) 100%);
+            transform: skewX(-25deg); animation: shine 3s infinite;
+        }
+        @keyframes shine { 100% { left: 200%; } }
+
+        .feedback-text {
+            background: #f8f9fa; padding: 15px; border-left: 4px solid #27ae60;
+            border-radius: 4px; font-size: 0.95rem; color: #444; line-height: 1.6; font-style: italic;
+        }
+        .feedback-verdict { display: block; margin-top: 10px; font-weight: bold; color: #27ae60; }
+
+        .report-footer {
+            background: #fafafa; padding: 20px 40px; border-top: 1px solid #eee;
+            display: flex; justify-content: flex-end; align-items: center;
+            position: relative; height: 80px; z-index: 2;
+        }
+
+        .stamp {
+            width: 180px; height: 180px; border: 5px solid var(--report-accent-color); border-radius: 50%;
+            position: absolute; right: 280px; bottom: 15px;
+            display: flex; justify-content: center; align-items: center;
+            color: var(--report-accent-color); font-weight: 900; font-size: 1rem; text-transform: uppercase;
+            opacity: 0; transform: scale(3) rotate(-20deg); visibility: hidden;
+            mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%"><rect x="0" y="0" width="100%" height="100%" fill="black" /><circle cx="20%" cy="20%" r="2" fill="white" opacity="0.4" /><circle cx="80%" cy="80%" r="4" fill="white" opacity="0.5" /><path d="M0,50 Q50,0 100,50 T200,50" stroke="white" stroke-width="2" opacity="0.2" fill="none"/></svg>'); 
+            pointer-events: none; z-index: 100;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background: rgba(255, 255, 255, 0.1); box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
+        }
+        .stamp.is-visible { opacity: 0.9; visibility: visible; transform: scale(1) rotate(-20deg); }
+        .stamp-inner {
+            width: 140px; height: 140px; border: 2px solid var(--report-accent-color); border-radius: 50%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;
+        }
+        .stamp-title { font-size: 1.4rem; font-weight: 900; letter-spacing: 2px; margin-bottom: 5px; text-shadow: 1px 1px 0 rgba(255,255,255,0.5); }
+        .stamp-status {
+            font-size: 1rem; font-weight: bold; border-top: 2px solid var(--report-accent-color); border-bottom: 2px solid var(--report-accent-color);
+            padding: 2px 10px; margin: 5px 0; background: var(--report-accent-color); color: white;
+        }
+        .stamp-date { font-size: 0.9rem; font-family: monospace; font-weight: bold; margin-top: 5px; }
+
+        .btn-report-confirm {
+            background-color: var(--report-primary-color); color: white; border: none;
+            padding: 14px 36px; font-size: 1.1rem; border-radius: 6px; cursor: pointer;
+            transition: background 0.3s, transform 0.1s; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 11;
+        }
+        .btn-report-confirm:hover { background-color: #34495e; transform: translateY(-1px); }
+        .btn-report-confirm:active { transform: translateY(1px); }
+        .btn-report-confirm:disabled { background-color: #95a5a6; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        @media (max-width: 900px) {
+            .main-content { grid-template-columns: 1fr; }
+            .stamp { right: 50%; margin-right: -90px; bottom: 80px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 启动遮罩 -->
+    <div id="start-overlay">
+        <h2>点击屏幕开始任务</h2>
+    </div>
+
+    <!-- 视频背景容器 -->
+    <div id="video-container">
+        <video id="introVideo" muted playsinline preload="auto">
+            <source src="https://v3-artist.vlabvod.com/bbda2735968c9fd108070f972b441b9b/6969d357/video/tos/cn/tos-cn-v-148450/oQhnDEgighPfqxZpmQQE4EKsIJP0C1BUCkMAiA/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6796&bt=6796&cs=0&ds=12&ft=5QYTUxhhe6BMyqoIf1VJD12Nzj&mime_type=video_mp4&qs=0&rc=aDg5ZTM2Njk4Zjk1Zjw4NEBpajpkbW85cmw8ODczNDM7M0BhMC8yLzRgXi0xYy9gYl8wYSNoaWw0MmRjZWRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767938258&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=202601091357383FD70E9FCC2A170C1D40" type="video/mp4">
+        </video>
+        <video id="analysisVideo" muted playsinline preload="auto">
+            <source src="https://v3-artist.vlabvod.com/e13f2ef4d49e874e018ca099f082a2dc/696a13f3/video/tos/cn/tos-cn-v-148450/oQ7IpLIQwia7Bsi5Z9h5EEWD2gZIQAPclEgJW/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6751&bt=6751&cs=0&ds=12&ft=5QYTUxhhe6BMyq6D-1VJD12Nzj&mime_type=video_mp4&qs=0&rc=ODM6ZzZkaTpmOzg8NjpnZUBpamZpaHU5cnNnODczNDM7M0AtMmItNjEzXjQxNDEzMl4uYSNyZzYtMmQ0ZmRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767954798&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=20260109183318B60536344FBDAFB16AE0" type="video/mp4">
+        </video>
+        <video id="propertiesVideo" muted playsinline preload="auto">
+            <source src="https://v9-artist.vlabvod.com/bd01a44b019c1690c489b5d882b58db4/696a17f1/video/tos/cn/tos-cn-v-148450/o0gRfEiHBERSWCgfwVIQIHDpKkAFEAjNBgS13Y/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6794&bt=6794&cs=0&ds=12&ft=5QYTUxhhe6BMyqBa-1VJD12Nzj&mime_type=video_mp4&qs=0&rc=Z2k8OTRmPDg0ZWk1OjU6M0BpM3loPHI5cnJnODczNDM7M0AxLjYuNjJiNjYxMzMwLjRfYSMtZS0xMmRzbmRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767955820&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=202601091850203E1711ADE3CB8B4C6E0D" type="video/mp4">
+        </video>
+        <!-- 元素试炼视频 -->
+        <video id="trialVideo" muted playsinline preload="auto">
+            <source src="https://v9-artist.vlabvod.com/7f8b7c8944391994b32d78841f66f8a9/696a271d/video/tos/cn/tos-cn-v-148450/oU8EQIFgE7WisvIhJ7wiwMBvJBQQpjDHJagHE/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6713&bt=6713&cs=0&ds=12&ft=5QYTUxhhe6BMyq0ro1VJD12Nzj&mime_type=video_mp4&qs=0&rc=OjNlNzk8aTRmOjU1PDtnOEBpajpoN2o5cjZoODczNDM7M0A1Mi0yMF80NjYxLTViX2IxYSMxZjRyMmRrbWRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767959704&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=202601091955045FFB815003F5FF3E0A26" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- 鉴定结案视频容器 -->
+    <div id="conclusion-container">
+        <video id="conclusionVideo" playsinline preload="auto">
+            <source src="https://v26-artist.vlabvod.com/6100399c0661b1b260a24d82fb42104f/696cd05b/video/tos/cn/tos-cn-v-148450/oc8PiQltiDur5gjQIwEB9xaVOhEIvv6rzIdVW/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6089&bt=6089&cs=0&ds=12&ft=5QYTUxhhe6BMyqij01VJD12Nzj&mime_type=video_mp4&qs=0&rc=Z2doOTdmOzc5ZTozZDpmNUBpM2V3Znc5cm1zODczNDM7M0A1MjBjYDZfXmMxLS9jNi1fYSNxXzZyMmRrX2VhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1768134102&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=2026011120214233FED7F71DFC66D2C2DB" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- 剧本总结视频容器 (新增) -->
+    <div id="summary-container">
+        <video id="summaryVideo" playsinline muted>
+            <source src="https://v3-artist.vlabvod.com/ab5a1469908bd6cbfa9eadc5e6acd55f/696ce100/video/tos/cn/tos-cn-v-148450/oMOnz3Q8IIePjjEB0pSOjGnCxEwVEeHeAkML5D/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6732&bt=6732&cs=0&ds=12&ft=5QYTUxhhe6BMyqcEb1VJD12Nzj&mime_type=video_mp4&qs=0&rc=NDplaDs6PDo0Ozs7NTszZEBpM3hpa3c5cnZ0ODczNDM7M0A1NWEyNTJiNS4xMTYxYF5eYSNycl5tMmRzYGVhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1768138363&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=20260111213243FA634E1B4968770A83BE" type="video/mp4">
+        </video>
+    </div>
+
+    <!-- 最终模糊背景层 -->
+    <div id="final-bg"></div>
+
+    <div id="hoverTooltip" class="custom-tooltip"></div>
+
+    <!-- 剧情 UI 层 -->
+    <div id="ui-layer">
+        <div id="display-area">
+            <img id="package-img" class="item-image" src="https://p26-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/08ecfe3c27504067aa66bc5bc3827d1d~tplv-tb4s082cfz-aigc_resize:1080:1080.webp?lk3s=43402efa&x-expires=1770336000&x-signature=40J3aDx81BalLyPcFKKWwpC3j2o%3D&format=.webp" alt="加急快件">
+            <img id="rebar-img" class="item-image" src="https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/8f4b64bcefd0457b99c95eff321da97a~tplv-tb4s082cfz-aigc_resize:1080:1080.webp?lk3s=43402efa&x-expires=1770336000&x-signature=OCXvsOu4e4EcqlFDAD9bRk1Bh54%3D&format=.webp" alt="建筑螺丝">
+            <div id="card-trigger-container">
+                <div class="click-target-area" id="element-card-trigger">
+                    <div class="click-guide-wrapper">
+                        <div class="guide-circle"></div>
+                        <div class="guide-text">点击卡牌</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 性质测评复杂模块容器 -->
+            <div id="complex-analysis-wrapper">
+                <!-- ==================== 0. 主控台 (Home) ==================== -->
+                <div id="home-view" class="view-section" style="display: flex; opacity: 1;">
+                    <!-- 卡片 1: 化学性质 -->
+                    <div class="nav-card" id="card-chemical" onclick="startChemicalFlow()">
+                        <div class="status-badge pending" id="badge-chem">未探究</div>
+                        <div class="nav-icon">🧪</div>
+                        <h2>得失电子能力探究</h2>
+                        <div class="nav-desc">
+                            探索原子结构，判断氧化还原性，并通过实验验证。
+                        </div>
+                        <div class="completion-summary">
+                            <div style="color: var(--accent-green); font-weight: bold; margin-bottom: 5px;">探究结论</div>
+                            <div style="font-size: 0.9rem;">铁原子极易失去电子，表现出强还原性和高化学活泼性。</div>
+                        </div>
+                    </div>
+
+                    <!-- 卡片 2: 物理性质 -->
+                    <div class="nav-card" id="card-physical" onclick="startPhysicalFlow()">
+                        <div class="status-badge pending" id="badge-phys">未探究</div>
+                        <div class="nav-icon">🧲</div>
+                        <h2>特异物理性能探究</h2>
+                        <div class="nav-desc">
+                            探索铁磁性与同素异形性等宏观物理特征。
+                        </div>
+                        <div class="completion-summary">
+                            <div style="color: var(--accent-green); font-weight: bold; margin-bottom: 5px;">探究结论</div>
+                            <div style="font-size: 0.9rem;">具备铁磁性（源于电子自旋）与同素异形性（结构随温度变化）。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== 1. 化学探究流 ==================== -->
+                <div id="chemical-view" class="view-section">
+                    
+                    <!-- 只有探究完成后才显示的返回按钮 -->
+                    <div class="back-nav" id="chem-back-btn" onclick="showHome()">返回主页</div>
+
+                    <!-- 阶段一：探索 (原子+雷达+滑块) -->
+                    <div id="exploration-sub-view" style="width: 100%;">
+                        <div class="module-container top-module">
+                            <div class="atom-wrapper">
+                                <div class="section-title">原子结构 (2D)</div>
+                                <div class="atom-container">
+                                    <div class="nucleus">Fe</div>
+                                    <div class="orbit orbit-1"><div class="electron"></div><div class="electron"></div></div>
+                                    <div class="orbit orbit-2">
+                                        <div class="electron" style="transform: rotate(0deg) translateX(45px)"></div>
+                                        <div class="electron" style="transform: rotate(45deg) translateX(45px)"></div>
+                                        <div class="electron" style="transform: rotate(90deg) translateX(45px)"></div>
+                                        <div class="electron" style="transform: rotate(135deg) translateX(45px)"></div>
+                                        <div class="electron" style="transform: rotate(180deg) translateX(45px)"></div>
+                                        <div class="electron" style="transform: rotate(225deg) translateX(45px)"></div>
+                                        <div class="electron" style="transform: rotate(270deg) translateX(45px)"></div>
+                                        <div class="electron" style="transform: rotate(315deg) translateX(45px)"></div>
+                                    </div>
+                                    <div class="orbit orbit-3">
+                                        <div class="electron" style="transform: rotate(0deg) translateX(70px)"></div>
+                                        <div class="electron" style="transform: rotate(60deg) translateX(70px)"></div>
+                                        <div class="electron" style="transform: rotate(120deg) translateX(70px)"></div>
+                                        <div class="electron" style="transform: rotate(180deg) translateX(70px)"></div>
+                                        <div class="electron" style="transform: rotate(240deg) translateX(70px)"></div>
+                                        <div class="electron" style="transform: rotate(300deg) translateX(70px)"></div>
+                                    </div>
+                                    <div class="orbit orbit-4"><div class="electron"></div><div class="electron"></div></div>
+                                </div>
+                            </div>
+
+                            <div class="radar-wrapper">
+                                <div class="section-title">得失电子影响因子</div>
+                                <div class="chart-container">
+                                    <canvas id="feRadarChart"></canvas>
+                                    <div class="radar-label lbl-1" data-key="radius">原子半径</div>
+                                    <div class="radar-label lbl-2" data-key="ionization">第一电离能</div>
+                                    <div class="radar-label lbl-3" data-key="electronegativity">电负性</div>
+                                    <div class="radar-label lbl-4" data-key="charge">有效核电荷</div>
+                                    <div class="radar-label lbl-5" data-key="proximity">最外层趋近度</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="module-container interaction-zone">
+                            <h3 style="margin-top:0; text-align: center;">得失电子能力确认</h3>
+                            <p style="color: var(--text-sub); margin-bottom: 20px; text-align: center;">请根据上方信息，拖动滑块判断铁的化学性质，并点击确认。</p>
+                            
+                            <div class="stats-grid">
+                                <div class="stat-item">
+                                    <div class="stat-label">氧化性 (得电子)</div>
+                                    <div class="stat-value" id="val-oxidizing" style="color: var(--accent-green)">弱</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">还原性 (失电子)</div>
+                                    <div class="stat-value" id="val-reducing" style="color: var(--accent-red)">强</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">化学活泼性</div>
+                                    <div class="stat-value" id="val-reactivity" style="color: var(--accent-yellow)">活泼</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-label">原子稳定性</div>
+                                    <div class="stat-value" id="val-stability">不稳定</div>
+                                </div>
+                            </div>
+
+                            <div class="slider-container">
+                                <div class="real-marker" id="realMarker">Fe 真实位置</div>
+                                <input type="range" min="0" max="100" value="50" id="electronSlider">
+                                <div class="slider-labels">
+                                    <span style="color: var(--accent-red)">◀ 易失电子 (还原性强)</span>
+                                    <span style="color: var(--accent-green)">易得电子 (氧化性强) ▶</span>
+                                </div>
+                            </div>
+
+                            <div class="feedback-msg" id="feedbackBox"></div>
+
+                            <button class="btn-confirm" id="confirmBtn">确认性质</button>
+                        </div>
+                    </div>
+
+                    <!-- 阶段二：化学验证 (默认隐藏) -->
+                    <div id="verification-sub-view">
+                        <div class="module-container">
+                            <div class="section-title">化学性质验证</div>
+                            <p style="font-size: 1.1rem; line-height: 1.6;">
+                                根据得失电子能力的探索，我们确认了铁元素具备 <span style="color:var(--accent-yellow); font-weight:bold;">活泼性</span> 与 <span style="color:var(--accent-red); font-weight:bold;">还原性</span>。<br>
+                                请观看下面的实验现象以验证推论。
+                            </p>
+
+                            <div class="video-grid">
+                                <div class="video-card">
+                                    <div class="video-container" id="container-1">
+                                        <div class="video-cover video-layer" id="cover-1" onclick="activateVideo('1')">
+                                            <div class="cover-icon"></div>
+                                            <p>实验：铁钉与稀盐酸反应</p>
+                                        </div>
+                                        <video id="video-1" class="video-layer" playsinline muted>
+                                            <source src="https://v3-artist.vlabvod.com/e13f2ef4d49e874e018ca099f082a2dc/696a13f3/video/tos/cn/tos-cn-v-148450/oQ7IpLIQwia7Bsi5Z9h5EEWD2gZIQAPclEgJW/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6751&bt=6751&cs=0&ds=12&ft=5QYTUxhhe6BMyq6D-1VJD12Nzj&mime_type=video_mp4&qs=0&rc=ODM6ZzZkaTpmOzg8NjpnZUBpamZpaHU5cnNnODczNDM7M0AtMmItNjEzXjQxNDEzMl4uYSNyZzYtMmQ0ZmRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767954798&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=20260109183318B60536344FBDAFB16AE0" type="video/mp4">
+                                        </video>
+                                        <div class="center-overlay icon-play-center" id="play-icon-1"></div>
+                                        <div class="center-overlay icon-replay-center" id="replay-1" onclick="replayVideo('1')">↺ 重看</div>
+                                        <div class="fullscreen-btn" id="fs-1" onclick="toggleFullscreen('1')">⛶</div>
+                                    </div>
+                                    <div class="explanation-box" id="exp-1">
+                                        <div class="exp-title">验证：化学活泼性</div>
+                                        <div class="exp-text">
+                                            <span class="highlight">现象：</span>铁钉表面产生大量气泡，溶液逐渐变为浅绿色。<br>
+                                            <span class="highlight">原理：</span>Fe + 2HCl = FeCl₂ + H₂↑
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="video-card">
+                                    <div class="video-container" id="container-2">
+                                        <div class="video-cover video-layer" id="cover-2" onclick="activateVideo('2')">
+                                            <div class="cover-icon"></div>
+                                            <p>实验：铁丝在氧气中燃烧</p>
+                                        </div>
+                                        <video id="video-2" class="video-layer" playsinline muted>
+                                            <source src="https://v3-artist.vlabvod.com/e13f2ef4d49e874e018ca099f082a2dc/696a13f3/video/tos/cn/tos-cn-v-148450/oQ7IpLIQwia7Bsi5Z9h5EEWD2gZIQAPclEgJW/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6751&bt=6751&cs=0&ds=12&ft=5QYTUxhhe6BMyq6D-1VJD12Nzj&mime_type=video_mp4&qs=0&rc=ODM6ZzZkaTpmOzg8NjpnZUBpamZpaHU5cnNnODczNDM7M0AtMmItNjEzXjQxNDEzMl4uYSNyZzYtMmQ0ZmRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767954798&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=20260109183318B60536344FBDAFB16AE0" type="video/mp4">
+                                        </video>
+                                        <div class="center-overlay icon-play-center" id="play-icon-2"></div>
+                                        <div class="center-overlay icon-replay-center" id="replay-2" onclick="replayVideo('2')">↺ 重看</div>
+                                        <div class="fullscreen-btn" id="fs-2" onclick="toggleFullscreen('2')">⛶</div>
+                                    </div>
+                                    <div class="explanation-box" id="exp-2">
+                                        <div class="exp-title">验证：强还原性</div>
+                                        <div class="exp-text">
+                                            <span class="highlight">现象：</span>铁丝在氧气中剧烈燃烧，火星四射。<br>
+                                            <span class="highlight">原理：</span>3Fe + 2O₂ = Fe₃O₄ (点燃)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="continue-container" id="continue-btn-container-chem">
+                                <button class="btn-confirm btn-next btn-home" onclick="finishChemicalFlow()">完成探究，返回主页</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== 2. 物理属性流 ==================== -->
+                <div id="physical-view" class="view-section">
+                    
+                    <!-- 只有探究完成后才显示的返回按钮 -->
+                    <div class="back-nav" id="phys-back-btn" onclick="showHome()">返回主页</div>
+
+                    <div class="module-container">
+                        <div class="section-title">特异物理属性探索</div>
+                        <p style="font-size: 1.1rem; line-height: 1.6;">
+                            通过对元素的扫描，我们发现铁元素具备 <span style="color:var(--accent-blue); font-weight:bold;">铁磁性</span> 与 <span style="color:var(--accent-yellow); font-weight:bold;">同素异形性</span>。<br>
+                            请观看下方视频了解这些特性。
+                        </p>
+
+                        <div class="video-grid">
+                            <div class="video-card">
+                                <div class="video-container" id="container-3">
+                                    <div class="video-cover video-layer" id="cover-3" onclick="activateVideo('3')">
+                                        <div class="cover-icon"></div>
+                                        <p>实验：居里点消失实验</p>
+                                    </div>
+                                    <video id="video-3" class="video-layer" playsinline muted>
+                                        <source src="https://v3-artist.vlabvod.com/e13f2ef4d49e874e018ca099f082a2dc/696a13f3/video/tos/cn/tos-cn-v-148450/oQ7IpLIQwia7Bsi5Z9h5EEWD2gZIQAPclEgJW/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6751&bt=6751&cs=0&ds=12&ft=5QYTUxhhe6BMyq6D-1VJD12Nzj&mime_type=video_mp4&qs=0&rc=ODM6ZzZkaTpmOzg8NjpnZUBpamZpaHU5cnNnODczNDM7M0AtMmItNjEzXjQxNDEzMl4uYSNyZzYtMmQ0ZmRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767954798&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=20260109183318B60536344FBDAFB16AE0" type="video/mp4">
+                                    </video>
+                                    <div class="center-overlay icon-play-center" id="play-icon-3"></div>
+                                    <div class="center-overlay icon-replay-center" id="replay-3" onclick="replayVideo('3')">↺ 重看</div>
+                                    <div class="fullscreen-btn" id="fs-3" onclick="toggleFullscreen('3')">⛶</div>
+                                </div>
+                                <div class="explanation-box" id="exp-3">
+                                    <div class="exp-title">属性：铁磁性</div>
+                                    <div class="exp-text">
+                                        剧烈加热破坏了铁原子磁矩的整齐排列。<br>
+                                        <span class="highlight">结论：</span>铁元素的磁性是与其原子内部电子自旋排列紧密相关的物理特性。
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="video-card">
+                                <div class="video-container" id="container-4">
+                                    <div class="video-cover video-layer" id="cover-4" onclick="activateVideo('4')">
+                                        <div class="cover-icon"></div>
+                                        <p>实验：钢铁的淬火</p>
+                                    </div>
+                                    <video id="video-4" class="video-layer" playsinline muted>
+                                        <source src="https://v3-artist.vlabvod.com/e13f2ef4d49e874e018ca099f082a2dc/696a13f3/video/tos/cn/tos-cn-v-148450/oQ7IpLIQwia7Bsi5Z9h5EEWD2gZIQAPclEgJW/?a=4066&ch=0&cr=0&dr=0&er=0&cd=0%7C0%7C0%7C0&br=6751&bt=6751&cs=0&ds=12&ft=5QYTUxhhe6BMyq6D-1VJD12Nzj&mime_type=video_mp4&qs=0&rc=ODM6ZzZkaTpmOzg8NjpnZUBpamZpaHU5cnNnODczNDM7M0AtMmItNjEzXjQxNDEzMl4uYSNyZzYtMmQ0ZmRhLS1kNC9zcw%3D%3D&btag=c0000e00008000&dy_q=1767954798&feature_id=7bed9f9dfbb915a044e5d473759ce9df&l=20260109183318B60536344FBDAFB16AE0" type="video/mp4">
+                                    </video>
+                                    <div class="center-overlay icon-play-center" id="play-icon-4"></div>
+                                    <div class="center-overlay icon-replay-center" id="replay-4" onclick="replayVideo('4')">↺ 重看</div>
+                                    <div class="fullscreen-btn" id="fs-4" onclick="toggleFullscreen('4')">⛶</div>
+                                </div>
+                                <div class="explanation-box" id="exp-4">
+                                    <div class="exp-title">属性：同素异形性</div>
+                                    <div class="exp-text">
+                                        铁元素具有通过改变原子空间结构（如从体心立方转变为面心立方）来大幅调整自身物理硬度的能力。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="continue-container" id="continue-btn-container-phys">
+                            <button class="btn-confirm btn-next btn-home" onclick="finishPhysicalFlow()">完成探究，返回主页</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="dialogue-area">
+            <div class="avatar-box" id="npc-avatar">
+                <img src="https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/8cf9ee596eae474692d5d5ca7c2dafa7~tplv-tb4s082cfz-aigc_resize:1080:1080.webp?lk3s=43402efa&x-expires=1770336000&x-signature=462mK3RsW6ZIzzs%2Fmat2K4ivY9A%3D&format=.webp" alt="芭芭拉">
+            </div>
+            <div class="text-box">
+                <div class="npc-name" id="npc-name">鉴定主管芭芭拉</div>
+                <div class="dialogue-text" id="dialogue-text">你好，鉴定师！刚才急件部送来了一个来自跨海大桥工地的快件。大桥的结构稳固性出了点小疑问，我们需要立刻对样本进行成分溯源。来，先拆开它，看看里面是什么。</div>
+            </div>
+            <button class="dialogue-action-btn" id="continueExploreBtn">继续探索</button>
+        </div>
+    </div>
+
+    <!-- 试炼点击引导层 -->
+    <div id="trial-click-overlay" onclick="enterPuzzlePhase()">
+        <div class="click-guide-wrapper">
+            <div class="guide-circle"></div>
+            <div class="guide-text">开始元素归位</div>
+        </div>
+    </div>
+
+    <!-- 元素归位模块 (Puzzle) -->
+    <div id="puzzle-module">
+        <div class="game-header">
+            <div class="dragger-container" id="startZone">
+                <div class="element-block" id="dragEl" draggable="true">
+                    <div class="element-symbol">Fe</div>
+                    <div class="element-name">Iron</div>
+                </div>
+            </div>
+            
+            <div class="feedback-panel" id="feedbackPanel">
+                <div class="feedback-title">MISSION CONTROL</div>
+                <div class="feedback-content" id="feedbackMsg">
+                    检测到游离元素 <strong>铁 (Fe)</strong>。<br>
+                    请将其拖入周期表中正确的位置。
+                </div>
+            </div>
+
+            <!-- 修改后的按钮组 -->
+            <div class="header-controls">
+                <button class="reset-btn" onclick="resetGame()">重置游戏</button>
+                <button class="complete-btn" id="completePuzzleBtn" onclick="enterConclusionPhase()">完成归位</button>
+            </div>
+        </div>
+
+        <div class="pt-wrapper">
+            <!-- 图例 -->
+            <div class="legend-grid">
+                <div class="legend-item"><div class="legend-color bg-alkali"></div>碱金属</div>
+                <div class="legend-item"><div class="legend-color bg-alkaline-e"></div>碱土金属</div>
+                <div class="legend-item"><div class="legend-color bg-lanthanide"></div>镧系元素</div>
+                <div class="legend-item"><div class="legend-color bg-actinide"></div>锕系元素</div>
+                <div class="legend-item"><div class="legend-color bg-transition"></div>过渡金属</div>
+                
+                <div class="legend-item"><div class="legend-color bg-main-metal"></div>主族金属</div>
+                <div class="legend-item"><div class="legend-color bg-metalloid"></div>类金属</div>
+                <div class="legend-item"><div class="legend-color bg-nonmetal"></div>非金属</div>
+                <div class="legend-item"><div class="legend-color bg-halogen"></div>卤素</div>
+                <div class="legend-item"><div class="legend-color bg-noble"></div>稀有气体</div>
+            </div>
+
+            <!-- 网格 -->
+            <div class="pt-grid-puzzle" id="ptGridPuzzle"></div>
+        </div>
+    </div>
+
+    <!-- 弹窗层 -->
+    <div id="fullscreenContainer" class="modal-overlay">
+        <div class="modal-close-btn" onclick="toggleFullscreen(false)">✕ 退出全屏</div>
+    </div>
+
+    <div id="imageModal" class="modal-overlay" onclick="closeImage()">
+        <div class="modal-close-btn" onclick="closeImage()">✕</div>
+        <div class="img-wrapper" onclick="event.stopPropagation()">
+            <img id="lightboxImg" src="" alt="Substance Image">
+            <div class="img-caption" id="lightboxCaption"></div>
+        </div>
+    </div>
+
+    <div class="pt-overlay" id="ptOverlay" onclick="closeTable()">
+        <div class="pt-container" onclick="event.stopPropagation()">
+            <div class="pt-header-row">
+                <div>
+                    <h2 style="margin:0 0 10px 0; font-size:1.5rem;">元素位置解析</h2>
+                    <div class="pt-legend-box">
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-alkali)"></div>碱金属</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-alkaline-e)"></div>碱土金属</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-transition)"></div>过渡金属</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-main-metal)"></div>主族金属</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-metalloid)"></div>类金属</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-nonmetal)"></div>非金属</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-halogen)"></div>卤素</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-noble)"></div>稀有气体</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-lanthanide)"></div>镧系</div>
+                        <div class="legend-item"><div class="legend-color" style="background:var(--c-actinide)"></div>锕系</div>
+                    </div>
+                </div>
+                <div class="pt-close-btn" onclick="closeTable()">✕</div>
+            </div>
+            <div class="pt-grid" id="ptGrid"></div>
+            <div style="color:#94a3b8; font-size:0.9rem; margin-top:10px;">
+                <strong style="color:#fde047">铁 (Fe)</strong> 位于 <strong style="color:#fff">第 4 周期，第 8 族</strong>。属于 <strong style="color:#fde047">过渡金属</strong> 区域 (d区)。
+            </div>
+        </div>
+    </div>
+
+    <!-- 最终卡牌交互层 -->
+    <div id="final-card-layer">
+        <div class="left-zone"></div>
+
+        <div class="card-wrapper" id="cardWrapper">
+            <div class="face front" onclick="flipCard(true)">
+                <div class="front-number">26</div>
+                <div class="front-symbol">Fe</div>
+                <div class="front-zh-name">铁</div>
+                <div class="front-en-name">Iron</div>
+                <div class="click-hint">点击探索元素详情</div>
+            </div>
+            <div class="face back">
+                <div class="back-header"><div class="close-btn" onclick="flipCard(false)">✕</div></div>
+                <div class="data-layer">
+                    <div class="model-area" id="miniModelContainer">
+                        <div class="stage" id="mainStage">
+                            <div class="atom-group" id="atom"></div>
+                        </div>
+                        <div class="expand-btn" onclick="toggleFullscreen(true)" title="全屏查看">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                        </div>
+                    </div>
+                    <div class="info-area">
+                        <div><div class="pos-label">周期</div><div class="pos-value">第 4 周期</div></div>
+                        <div><div class="pos-label">族</div><div class="pos-value">第 8 族 <span style="font-size:0.8rem; color:#64748b; font-weight:400">(VIB)</span></div></div>
+                        <div class="pos-btn" onclick="openTable()"><span>🗺️ 定位与解析</span></div>
+                    </div>
+                </div>
+                <div class="properties-layer scroll-target">
+                    <div class="section-header">常见物质形态 (点击查看)</div>
+                    <div class="substances-list">
+                        <div class="substance-card" onclick="showImage('https://wds-service-1258344699.file.myqcloud.com/20/18426/jpg/1708680966418adc7190994ac0b1b870d61b7ab35015d.jpg?version=1708680968', '单质铁 (Fe)')">
+                            <div class="sub-icon">🔩</div>
+                            <div class="sub-info"><div class="sub-name">单质铁 (Fe)</div><div class="sub-desc">银白色金属，具有铁磁性，工业基础材料。</div></div>
+                            <div class="expand-action"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+                        </div>
+                        <div class="substance-card" onclick="showImage('https://pic.rmb.bdstatic.com/bjh/news/b5a6751e1eed2e8b47cad2806d1f03e5.png', '赤铁矿 (Fe₂O₃)')">
+                            <div class="sub-icon">🪨</div>
+                            <div class="sub-info"><div class="sub-name">赤铁矿 (Fe₂O₃)</div><div class="sub-desc">红褐色粉末或晶体，炼铁的主要原料。</div></div>
+                            <div class="expand-action"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+                        </div>
+                        <div class="substance-card" onclick="showImage('https://pic.rmb.bdstatic.com/460fb3a8fc781e19075ab27a854e2811.jpg@h_1280', '血红素 (Heme)')">
+                            <div class="sub-icon">🩸</div>
+                            <div class="sub-info"><div class="sub-name">血红素 (Heme)</div><div class="sub-desc">生物体内负责输送氧气的含铁络合物。</div></div>
+                            <div class="expand-action"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></div>
+                        </div>
+                    </div>
+                    <div class="section-header">物理性能指纹</div>
+                    <div class="fingerprint-grid">
+                        <div class="fp-item"><div class="fp-label">原子量</div><div class="fp-value">55.845<span class="fp-unit">u</span></div></div>
+                        <div class="fp-item"><div class="fp-label">原子半径</div><div class="fp-value">126<span class="fp-unit">pm</span></div></div>
+                        <div class="fp-item"><div class="fp-label">电负性</div><div class="fp-value">1.83<span class="fp-unit">(Pauling)</span></div></div>
+                        <div class="fp-item"><div class="fp-label">第一电离能</div><div class="fp-value">7.90<span class="fp-unit">eV</span></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-zone">
+            <div class="right-content-anchor">
+                <div class="npc-row">
+                    <div class="task-avatar">
+                        <img src="https://p3-dreamina-sign.byteimg.com/tos-cn-i-tb4s082cfz/8cf9ee596eae474692d5d5ca7c2dafa7~tplv-tb4s082cfz-aigc_resize:1080:1080.webp?lk3s=43402efa&x-expires=1770336000&x-signature=462mK3RsW6ZIzzs%2Fmat2K4ivY9A%3D&format=.webp" alt="芭芭拉">
+                    </div>
+                    <div class="task-bubble">
+                        自由翻阅卡牌，重点核对元素符号、原子结构、周期表位置等基础信息
+                    </div>
+                </div>
+                <div class="controls-area">
+                    <div class="progress-wrapper">
+                        <div class="progress-label">
+                            <span>核对进度</span>
+                            <span id="progress-text">0%</span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" id="progress-bar"></div>
+                        </div>
+                    </div>
+                    <button class="verify-btn" id="verifyBtn" disabled onclick="enterPropertiesPhase()">
+                        核对完成
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 最终报告页层 (默认隐藏) -->
+    <div id="final-report-layer">
+        <div class="report-container">
+            <header class="report-header">
+                <span>元素鉴定报告</span>
+                <span class="report-id">ID: ELEM-20260111-FE</span>
+            </header>
+
+            <div class="main-content">
+                <!-- 左侧：鉴定卡片 -->
+                <div class="card-section">
+                    <div class="fe-card">
+                        <div class="watermark"></div>
+                        <div class="watermark-text">GENUINE</div>
+                        <span class="element-number">26</span>
+                        <span class="element-symbol">Fe</span>
+                        <span class="element-name">Iron / 铁</span>
+                        <span class="element-mass">55.845 u</span>
+                    </div>
+                </div>
+
+                <!-- 中间：核心判定结论 -->
+                <div class="core-data-section">
+                    <div class="report-section-title">核心判定结论</div>
+
+                    <div class="data-group">
+                        <span class="data-label">基础信息</span>
+                        <div class="data-value">
+                            26号位元素，位于元素周期表第4周期第VIII族。
+                        </div>
+                    </div>
+
+                    <div class="data-group">
+                        <span class="data-label">得失电子能力</span>
+                        <div class="data-value">
+                            最外层电子易失去，失电子倾向中等。<br>
+                            化学性质活泼性中等，具备强还原性。
+                        </div>
+                    </div>
+
+                    <div class="data-group">
+                        <span class="data-label">特异性物理性质</span>
+                        <div class="tags-container">
+                            <span class="tag tag-magnetic">⚡ 铁磁性</span>
+                            <span class="tag tag-structure">⚛ 同素异形性</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：应用反馈 -->
+                <div class="feedback-section">
+                    <div class="report-section-title">应用反馈</div>
+                    
+                    <div class="image-container">
+                        <img src="https://images.unsplash.com/photo-1545156521-77bd85671d30?q=80&w=800&auto=format&fit=crop" alt="跨海大桥结构特写">
+                        <div class="shine"></div>
+                    </div>
+
+                    <div class="feedback-text">
+                        “经实地检测，该批次 Fe 元素构成的合金结构件在跨海大桥高盐、高湿环境下表现稳定。”
+                        <span class="feedback-verdict">
+                            <br>✅ 鉴定结论：性能极佳，完全符合跨海大桥万吨级承重要求。
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="report-footer">
+                <!-- 巨型拟真印章 -->
+                <div class="stamp" id="officialStamp">
+                    <div class="stamp-inner">
+                        <span class="stamp-title">鉴定中心</span>
+                        <span class="stamp-status">OFFICIAL PASS</span>
+                        <span class="stamp-date" id="stampDate">--.--.--</span>
+                    </div>
+                </div>
+                
+                <button class="btn-report-confirm" id="btnReportConfirm">鉴定通过，发送报告</button>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        const introVideo = document.getElementById('introVideo');
+        const analysisVideo = document.getElementById('analysisVideo');
+        const propertiesVideo = document.getElementById('propertiesVideo');
+        const trialVideo = document.getElementById('trialVideo');
+        const uiLayer = document.getElementById('ui-layer');
+        const startOverlay = document.getElementById('start-overlay');
+        const packageImg = document.getElementById('package-img');
+        const rebarImg = document.getElementById('rebar-img');
+        const dialogueText = document.getElementById('dialogue-text');
+        const npcName = document.getElementById('npc-name');
+        const npcAvatar = document.getElementById('npc-avatar');
+        const cardTriggerContainer = document.getElementById('card-trigger-container');
+        const elementCardTrigger = document.getElementById('element-card-trigger');
+        const videoContainer = document.getElementById('video-container');
+        const finalBg = document.getElementById('final-bg');
+        const finalCardLayer = document.getElementById('final-card-layer');
+        const complexAnalysisWrapper = document.getElementById('complex-analysis-wrapper');
+        const dialogueArea = document.getElementById('dialogue-area');
+        const displayArea = document.getElementById('display-area');
+        const trialClickOverlay = document.getElementById('trial-click-overlay');
+        const puzzleModule = document.getElementById('puzzle-module');
+        
+        // 新增：鉴定结案相关元素
+        const conclusionContainer = document.getElementById('conclusion-container');
+        const conclusionVideo = document.getElementById('conclusionVideo');
+        const completePuzzleBtn = document.getElementById('completePuzzleBtn');
+
+        function unlockUI() {
+            introVideo.pause();
+            uiLayer.style.opacity = '1';
+            uiLayer.style.pointerEvents = 'auto'; 
+        }
+
+        startOverlay.addEventListener('click', function() {
+            startOverlay.style.display = 'none';
+            introVideo.play().catch(e => {
+                console.error("播放失败，直接显示UI", e);
+                unlockUI(); 
+            });
+        });
+
+        introVideo.addEventListener('ended', unlockUI);
+        introVideo.addEventListener('error', unlockUI); 
+
+        packageImg.addEventListener('click', function() {
+            packageImg.style.display = 'none';
+            rebarImg.style.display = 'block';
+            setTimeout(() => { rebarImg.style.opacity = '1'; rebarImg.style.transform = 'scale(1)'; }, 50);
+            updateDialogue("是一枚承受万吨拉力的高强度螺丝。在微观世界里，它的坚韧源于一种核心元素的支撑。我们需要把它的元素样本提取出来。");
+        });
+
+        rebarImg.addEventListener('click', function() {
+            uiLayer.style.opacity = '0'; uiLayer.style.pointerEvents = 'none'; rebarImg.style.display = 'none'; 
+            analysisVideo.style.opacity = '1'; 
+            analysisVideo.play().then(() => { introVideo.pause(); }).catch(e => {
+                console.error("分析视频播放失败", e);
+                analysisVideo.dispatchEvent(new Event('ended'));
+            });
+        });
+
+        analysisVideo.addEventListener('ended', function() {
+            analysisVideo.pause(); 
+            cardTriggerContainer.style.display = 'flex';
+            updateDialogue("元素样本Fe提取成功！但在进行破坏性实验前，我们必须先同步它的身份协议。请点击卡牌，核对它的原子序数和电子排布，只有数据完全对齐，鉴定仪才能解锁下一步权限。");
+            uiLayer.style.opacity = '1'; uiLayer.style.pointerEvents = 'auto';
+        });
+
+        elementCardTrigger.addEventListener('click', function() {
+            uiLayer.style.opacity = '0'; uiLayer.style.pointerEvents = 'none';
+            videoContainer.style.opacity = '0'; 
+            
+            finalBg.style.display = 'block';
+            finalCardLayer.style.display = 'block';
+            
+            setTimeout(() => {
+                finalBg.style.opacity = '1';
+                finalCardLayer.style.opacity = '1';
+                initCardLogic(); 
+            }, 50);
+        });
+
+        // --- 进入性质探秘阶段 ---
+        function enterPropertiesPhase() {
+            // 1. 隐藏卡牌层
+            finalCardLayer.style.opacity = '0';
+            setTimeout(() => {
+                finalCardLayer.style.display = 'none';
+            }, 500);
+
+            // 2. 隐藏背景图片 (露出底下的视频)
+            finalBg.style.opacity = '0';
+
+            // 3. 播放性质探秘视频
+            videoContainer.style.opacity = '1';
+            propertiesVideo.style.display = 'block';
+            setTimeout(() => {
+                propertiesVideo.style.opacity = '1';
+                propertiesVideo.play().catch(e => {
+                    console.error("性质视频播放失败", e);
+                    propertiesVideo.dispatchEvent(new Event('ended'));
+                });
+            }, 100);
+        }
+
+        // --- 性质视频结束处理 ---
+        propertiesVideo.addEventListener('ended', function() {
+            // 1. 视频消失 (立即隐藏，防止显示尾帧)
+            propertiesVideo.style.display = 'none';
+            propertiesVideo.style.opacity = '0';
+
+            // 2. 显示背景 (背景已更新为纯黑)
+            finalBg.style.display = 'block'; 
+            setTimeout(() => {
+                finalBg.style.opacity = '1';
+            }, 100);
+
+            // 3. 准备 UI 层内容
+            packageImg.style.display = 'none';
+            rebarImg.style.display = 'none';
+            cardTriggerContainer.style.display = 'none';
+            
+            // 显示复杂的性质探究模块
+            complexAnalysisWrapper.style.display = 'flex';
+            
+            // 初始化复杂模块的逻辑
+            initPropertiesModule();
+
+            // 4. 显示 UI 层
+            uiLayer.style.opacity = '1';
+            uiLayer.style.pointerEvents = 'auto';
+
+            // 5. 更新对话
+            updateDialogue("档案同步完成。现在进入核心环节：性能测试。我们需要测定它的电子得失倾向（决定它是否耐腐蚀）以及它的特异物理性能（决定它是否有特殊用途），点击上方任意一项开始测评吧");
+        });
+
+        // --- 新增：元素试炼逻辑 ---
+        function startElementTrial() {
+            // 1. 隐藏 UI 层
+            uiLayer.style.opacity = '0';
+            uiLayer.style.pointerEvents = 'none';
+            
+            // 2. 隐藏复杂分析模块
+            complexAnalysisWrapper.style.display = 'none';
+
+            // 3. 隐藏背景层，露出视频层
+            finalBg.style.opacity = '0';
+
+            // 4. 播放试炼视频
+            trialVideo.style.display = 'block';
+            setTimeout(() => {
+                trialVideo.style.opacity = '1';
+                trialVideo.play().catch(e => {
+                    console.error("试炼视频播放失败", e);
+                    trialVideo.dispatchEvent(new Event('ended'));
+                });
+            }, 100);
+        }
+
+        // --- 试炼视频结束处理 ---
+        trialVideo.addEventListener('ended', function() {
+            // 修改：不隐藏视频，保留最后一帧
+            trialVideo.pause(); 
+            // 也不恢复背景 finalBg.style.opacity = '1';
+
+            // 恢复 UI 层 (仅显示对话框)
+            uiLayer.style.opacity = '1';
+            uiLayer.style.pointerEvents = 'auto';
+            
+            // 确保对话框可见且布局正确
+            dialogueArea.style.opacity = '1';
+            dialogueArea.classList.remove('collapsed');
+            displayArea.classList.remove('fullscreen-mode');
+
+            // 更新对话内容
+            updateDialogue("所有的测评数据已上传。最后一步，也是最关键的一步：请运用你的空间逻辑，将Fe的数据模块锚定到周期表矩阵中。只有位置精准，鉴定报告才能正式生效！");
+
+            // 隐藏继续按钮
+            document.getElementById('continueExploreBtn').style.display = 'none';
+
+            // 显示中心点击引导
+            trialClickOverlay.style.display = 'flex';
+        });
+
+        // --- 进入元素归位 (Puzzle) 阶段 ---
+        function enterPuzzlePhase() {
+            // 1. 隐藏所有旧的 UI
+            uiLayer.style.display = 'none';
+            videoContainer.style.display = 'none';
+            finalBg.style.display = 'none';
+            trialClickOverlay.style.display = 'none';
+
+            // 2. 显示 Puzzle 模块
+            puzzleModule.style.display = 'flex';
+
+            // 3. 初始化 Puzzle 逻辑
+            initPuzzleGame();
+        }
+
+        // --- 新增：进入鉴定结案阶段 ---
+        function enterConclusionPhase() {
+            // 1. 隐藏 Puzzle 模块
+            puzzleModule.style.display = 'none';
+            
+            // 2. 显示结案视频容器
+            conclusionContainer.style.display = 'block';
+            
+            // 3. 播放结案视频
+            conclusionVideo.play().catch(e => {
+                console.error("结案视频播放失败", e);
+                // 如果自动播放失败，尝试静音播放或直接结束
+                conclusionVideo.muted = true;
+                conclusionVideo.play().catch(() => conclusionVideo.dispatchEvent(new Event('ended')));
+            });
+
+            // 4. 监听视频结束，显示最终报告
+            conclusionVideo.onended = function() {
+                // 隐藏视频容器
+                conclusionContainer.style.display = 'none';
+                
+                // 显示最终报告层
+                const reportLayer = document.getElementById('final-report-layer');
+                reportLayer.style.display = 'flex';
+                
+                // 初始化报告页面的交互逻辑
+                initReportPageLogic();
+
+                // --- 触发芭芭拉的最终对话 (Item 7) ---
+                const uiLayer = document.getElementById('ui-layer');
+                const dialogueArea = document.getElementById('dialogue-area');
+                const npcName = document.getElementById('npc-name');
+
+                // 确保 UI 层可见，并调整 z-index 以便显示在报告之上
+                uiLayer.style.display = 'flex';
+                uiLayer.style.opacity = '1';
+                uiLayer.style.zIndex = '1000'; // 临时提高层级
+                uiLayer.style.pointerEvents = 'none'; // 允许点击穿透到报告层
+
+                dialogueArea.style.opacity = '1';
+                dialogueArea.classList.remove('collapsed');
+
+                npcName.innerText = "鉴定主管芭芭拉";
+                updateDialogue("呼——鉴定报告新鲜出炉！给，这是你的第一份首席鉴定报告。我们不仅帮建筑工地查清了Fe的性质，更见证了它从微观结构到宏观性能的逻辑链条。表现得非常专业，鉴定师！");
+
+                // 3秒后自动消失
+                setTimeout(() => {
+                    dialogueArea.style.opacity = '0';
+                    setTimeout(() => {
+                        uiLayer.style.zIndex = '100'; // 恢复层级
+                    }, 500);
+                }, 3000);
+            };
+        }
+
+        // --- 最终报告页面交互逻辑 ---
+        function initReportPageLogic() {
+            const btn = document.getElementById('btnReportConfirm');
+            const stamp = document.getElementById('officialStamp');
+            const dateSpan = document.getElementById('stampDate');
+
+            btn.addEventListener('click', function() {
+                // 1. 获取当前实时日期
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const currentDate = `${year}.${month}.${day}`;
+
+                // 2. 更新印章日期
+                dateSpan.textContent = currentDate;
+
+                // 3. 显示印章
+                stamp.classList.add('is-visible');
+
+                // 4. 按钮反馈
+                btn.textContent = "报告已发送";
+                btn.disabled = true;
+
+                // 5. 3秒后进入剧本总结环节
+                setTimeout(() => {
+                    enterSummaryPhase();
+                }, 3000);
+            });
+        }
+
+        // --- 新增：剧本总结环节逻辑 ---
+        function enterSummaryPhase() {
+            // 1. 隐藏报告页
+            document.getElementById('final-report-layer').style.display = 'none';
+
+            // 2. 显示总结视频容器
+            const summaryContainer = document.getElementById('summary-container');
+            const summaryVideo = document.getElementById('summaryVideo');
+            summaryContainer.style.display = 'block';
+
+            // 3. 播放视频
+            summaryVideo.play().catch(e => {
+                console.error("总结视频播放失败", e);
+                // 尝试静音播放
+                summaryVideo.muted = true;
+                summaryVideo.play();
+            });
+
+            // 4. 监听视频结束
+            summaryVideo.onended = function() {
+                // 视频暂停在最后一帧
+                summaryVideo.pause();
+
+                // 显示对话框
+                showEngineerDialogue();
+            };
+        }
+
+        function showEngineerDialogue() {
+            // 关键修复：强制提升 UI 层级，确保在视频上方，并且显式设置为 flex
+            const uiLayer = document.getElementById('ui-layer');
+            uiLayer.style.display = 'flex'; // 确保可见
+            uiLayer.style.zIndex = '800'; 
+            uiLayer.style.opacity = '1';
+            uiLayer.style.pointerEvents = 'auto';
+            
+            dialogueArea.style.opacity = '1';
+            dialogueArea.classList.remove('collapsed');
+
+            // 设置工程师对话内容
+            npcName.innerText = "工程师";
+            dialogueText.innerText = "感谢鉴定中心！收到了你们发来的Fe元素鉴定报告，我们现在对大桥的强度非常有信心。期待下次合作！";
+            
+            // 隐藏头像 (头像框为空)
+            npcAvatar.querySelector('img').style.display = 'none';
+            npcAvatar.style.backgroundColor = 'transparent'; // 或者保持灰色背景
+            npcAvatar.style.border = '3px solid #666';
+
+            // 3秒后切换到芭芭拉
+            setTimeout(() => {
+                showBarbaraFinalDialogue();
+            }, 3000);
+        }
+
+        function showBarbaraFinalDialogue() {
+            // 恢复芭芭拉头像
+            npcAvatar.querySelector('img').style.display = 'block';
+            npcAvatar.style.backgroundColor = '#333';
+            npcAvatar.style.border = '3px solid #fff';
+
+            // 设置芭芭拉对话内容
+            npcName.innerText = "鉴定主管芭芭拉";
+            updateDialogue("看，鉴定师，这就是科学的力量。不仅是铁，这世界上还有100多种未被完全解码的元素等着我们，准备好迎接下一个快件了吗？");
+        }
+
+
+        function updateDialogue(text) {
+            dialogueText.style.opacity = 0;
+            setTimeout(() => { dialogueText.innerText = text; dialogueText.style.opacity = 1; }, 300);
+        }
+
+        // --- 核心布局切换逻辑 ---
+        function toggleLayout(isFull) {
+            if (isFull) {
+                displayArea.classList.add('fullscreen-mode');
+                dialogueArea.classList.add('collapsed');
+            } else {
+                displayArea.classList.remove('fullscreen-mode');
+                dialogueArea.classList.remove('collapsed');
+            }
+        }
+
+        window.onload = function() { introVideo.play().then(() => startOverlay.style.display = 'none').catch(() => {}); };
+
+        const progressState = { flipped: false, tableOpened: false, scrolled: false };
+        function checkProgress(type) {
+            if (type === 'flip') progressState.flipped = true;
+            if (type === 'table') progressState.tableOpened = true;
+            if (type === 'scroll') progressState.scrolled = true;
+            let count = 0;
+            if (progressState.flipped) count++;
+            if (progressState.tableOpened) count++;
+            if (progressState.scrolled) count++;
+            let percent = 0;
+            if (count === 1) percent = 33; if (count === 2) percent = 66; if (count === 3) percent = 100;
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('progress-text').innerText = percent + '%';
+            if (percent === 100) {
+                const btn = document.getElementById('verifyBtn');
+                btn.disabled = false; btn.classList.add('active');
+            }
+        }
+
+        function initCardLogic() {
+            const cardWrapper = document.getElementById('cardWrapper');
+            const atom = document.getElementById('atom');
+            const mainStage = document.getElementById('mainStage');
+            const miniModelContainer = document.getElementById('miniModelContainer');
+            const fullscreenContainer = document.getElementById('fullscreenContainer');
+            const scrollTarget = document.querySelector('.scroll-target');
+            if(scrollTarget) {
+                scrollTarget.addEventListener('scroll', function() {
+                    if(this.scrollTop > 50) { checkProgress('scroll'); }
+                });
+            }
+            let allParticles = []; let modelScale = 0.8; 
+            for(let i=0; i<30; i++) {
+                const p = document.createElement('div');
+                const isProton = Math.random() > 0.55; 
+                p.className = `billboard-particle ${isProton ? 'nucleus-p' : 'nucleus-n'}`;
+                const r = 14; 
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                const x = r * Math.sin(phi) * Math.cos(theta);
+                const y = r * Math.sin(phi) * Math.sin(theta);
+                const z = r * Math.cos(phi);
+                p.dataset.origX = x; p.dataset.origY = y; p.dataset.origZ = z;
+                p.style.transform = `translate3d(${x}px, ${y}px, ${z}px)`;
+                atom.appendChild(p); allParticles.push(p);
+            }
+            [50, 80, 110, 140].forEach((rad, idx) => {
+                const orbit = document.createElement('div'); orbit.className = 'orbit-ring';
+                orbit.style.width = rad*2 + 'px'; orbit.style.height = rad*2 + 'px';
+                orbit.style.transform = `translate(-50%, -50%) rotateX(${50 + idx*25}deg) rotateY(${idx*40}deg)`;
+                atom.appendChild(orbit);
+                const count = idx * 2 + 2;
+                for(let i=0; i<count; i++) {
+                    const wrap = document.createElement('div');
+                    wrap.style.position = 'absolute'; wrap.style.top='50%'; wrap.style.left='50%';
+                    wrap.style.transformStyle = 'preserve-3d'; wrap.style.transform = `rotateY(${(i/count)*6.28}rad)`;
+                    const el = document.createElement('div'); el.className = 'billboard-particle electron';
+                    wrap.animate([ { transform: `rotateZ(0deg) translate(${rad}px) rotateZ(0deg)` }, { transform: `rotateZ(360deg) translate(${rad}px) rotateZ(-360deg)` } ], { duration: (3+idx)*1000, iterations: Infinity, easing: 'linear' });
+                    wrap.appendChild(el); orbit.appendChild(wrap); allParticles.push(el);
+                }
+            });
+            let isDragging = false, lastX, lastY, rotX = -10, rotY = 0;
+            mainStage.addEventListener('mousedown', e => { isDragging=true; lastX=e.clientX; lastY=e.clientY; e.stopPropagation(); });
+            window.addEventListener('mouseup', () => isDragging=false);
+            window.addEventListener('mousemove', e => {
+                if(!isDragging) return;
+                const dx = e.clientX - lastX; const dy = e.clientY - lastY;
+                rotY += dx * 0.5; rotX -= dy * 0.5; lastX = e.clientX; lastY = e.clientY;
+            });
+            function animate() {
+                if(!isDragging) rotY += 0.3;
+                atom.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) scale(${modelScale})`;
+                const counterRot = `rotateY(${-rotY}deg) rotateX(${-rotX}deg)`;
+                allParticles.forEach(p => {
+                    if(p.classList.contains('electron')) { p.style.transform = counterRot; } else { p.style.transform = `translate3d(${p.dataset.origX}px, ${p.dataset.origY}px, ${p.dataset.origZ}px) ${counterRot}`; }
+                });
+                requestAnimationFrame(animate);
+            }
+            animate();
+            window.toggleFullscreen = function(isFull) {
+                if (isFull) { fullscreenContainer.classList.add('active'); fullscreenContainer.appendChild(mainStage); modelScale = 1.5; } else { fullscreenContainer.classList.remove('active'); miniModelContainer.appendChild(mainStage); miniModelContainer.insertBefore(mainStage, miniModelContainer.querySelector('.expand-btn')); modelScale = 0.8; }
+            }
+        }
+
+        function flipCard(flip) { const cardWrapper = document.getElementById('cardWrapper'); if (flip) { cardWrapper.classList.add('flipped'); checkProgress('flip'); } else { cardWrapper.classList.remove('flipped'); } }
+        function showImage(url, caption) { const modal = document.getElementById('imageModal'); const img = document.getElementById('lightboxImg'); const cap = document.getElementById('lightboxCaption'); img.src = url; cap.innerText = caption; modal.classList.add('active'); }
+        function closeImage() { document.getElementById('imageModal').classList.remove('active'); setTimeout(() => { document.getElementById('lightboxImg').src = ""; }, 300); }
+        const ptOverlay = document.getElementById('ptOverlay'); const ptGrid = document.getElementById('ptGrid');
+        function openTable() { ptOverlay.classList.add('active'); if (ptGrid.innerHTML === '') renderTable(); checkProgress('table'); }
+        function closeTable() { ptOverlay.classList.remove('active'); }
+        function renderTable() {
+            for (let i = 1; i <= 126; i++) {
+                const cell = document.createElement('div'); cell.className = 'pt-cell';
+                const col = (i - 1) % 18 + 1; const row = Math.ceil(i / 18);
+                let isEmpty = false; if (row === 1 && col > 1 && col < 18) isEmpty = true; if ((row === 2 || row === 3) && col > 2 && col < 13) isEmpty = true;
+                if (isEmpty) { cell.classList.add('empty'); } else {
+                    let typeClass = '';
+                    if (row === 1 && col === 1) typeClass = 'pt-c-nonmetal'; else if (col === 18) typeClass = 'pt-c-noble'; else if (col === 1) typeClass = 'pt-c-alkali'; else if (col === 2) typeClass = 'pt-c-alkaline-e'; else if (col >= 3 && col <= 12) typeClass = 'pt-c-transition'; else if (col === 17) typeClass = 'pt-c-halogen'; else { if ([13].includes(col)) { if(row==2) typeClass='pt-c-metalloid'; else typeClass='pt-c-main-metal'; } else if (col === 14) { if(row==2) typeClass='pt-c-nonmetal'; else if(row<5) typeClass='pt-c-metalloid'; else typeClass='pt-c-main-metal'; } else if (col === 15) { if(row<4) typeClass='pt-c-nonmetal'; else if(row<6) typeClass='pt-c-metalloid'; else typeClass='pt-c-main-metal'; } else if (col === 16) { if(row<5) typeClass='pt-c-nonmetal'; else if(row==5) typeClass='pt-c-metalloid'; else typeClass='pt-c-main-metal'; } }
+                    if (row === 6 && col === 3) typeClass = 'pt-c-lanthanide'; if (row === 7 && col === 3) typeClass = 'pt-c-actinide';
+                    if(typeClass) cell.classList.add(typeClass); if (row === 4 && col === 8) { cell.innerText = "Fe"; cell.classList.add('target'); }
+                }
+                ptGrid.appendChild(cell);
+            }
+        }
+
+        /* ==================== 性质探秘模块逻辑 ==================== */
+        function initPropertiesModule() {
+            // --- 全局状态 ---
+            let chemCompleted = false;
+            let physCompleted = false;
+
+            // --- Stage 1: Radar Chart & Logic ---
+            const ctx = document.getElementById('feRadarChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: ['','','','',''],
+                    datasets: [{
+                        label: '铁 (Fe) 指标强度',
+                        data: [8, 3, 3, 5, 2],
+                        fill: true,
+                        backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                        borderColor: 'rgba(56, 189, 248, 1)',
+                        pointBackgroundColor: '#fff',
+                        pointBorderColor: 'rgba(56, 189, 248, 1)',
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    layout: { padding: 20 },
+                    scales: {
+                        r: {
+                            angleLines: { color: 'rgba(255, 255, 255, 0.1)' },
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            pointLabels: { display: false },
+                            ticks: { display: false, max: 10, min: 0 }
+                        }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            const dimensionData = {
+                "radius": { title: "原子半径", value: "126 pm (较大)", desc: "原子核到最外层电子的距离。", logic: "半径越大，核对外层电子的束缚越弱 → 越容易失去电子。", type: "loss" },
+                "ionization": { title: "第一电离能", value: "762.5 kJ/mol (较低)", desc: "强行拔走一个最外层电子所需的能量。", logic: "能耗越低，说明电子越容易被拔走 → 失电子倾向强。", type: "loss" },
+                "electronegativity": { title: "电负性", value: "1.83 (鲍林标度)", desc: "原子在化合物中吸引电子的能力。", logic: "数值较低（<2.0），说明它对电子的渴望不强 → 得电子倾向弱。", type: "loss" },
+                "charge": { title: "有效核电荷", value: "Zeff ≈ 6.25", desc: "原子核对最外层电子的实际吸引力。", logic: "吸引力中等，但不足以抵消大半径带来的疏离感。", type: "neutral" },
+                "proximity": { title: "最外层趋近度", value: "2 / 8 (4s²)", desc: "最外层电子数相对于稳定八隅体结构的接近程度。", logic: "只有2个电子，远少于8个。相比于找6个电子填满，失去2个电子更容易。", type: "loss" }
+            };
+
+            const tooltip = document.getElementById('hoverTooltip');
+            const labels = document.querySelectorAll('.radar-label');
+
+            labels.forEach(label => {
+                label.addEventListener('mouseenter', (e) => {
+                    const key = label.getAttribute('data-key');
+                    const data = dimensionData[key];
+                    tooltip.innerHTML = `<span class="tooltip-title">${data.title} <span class="tooltip-value">${data.value}</span></span><span class="tooltip-desc">${data.desc}</span><span class="tooltip-logic ${data.type === 'loss' ? 'loss' : ''}">推导：${data.logic}</span>`;
+                    tooltip.style.opacity = '1';
+                    const rect = label.getBoundingClientRect();
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    let topPos = rect.top + scrollTop - 10;
+                    let leftPos = rect.left + (rect.width / 2);
+                    if (topPos < 150) { tooltip.style.transform = "translate(-50%, 20px)"; } else { tooltip.style.transform = "translate(-50%, -100%)"; }
+                    tooltip.style.top = topPos + 'px';
+                    tooltip.style.left = leftPos + 'px';
+                });
+                label.addEventListener('mouseleave', () => { tooltip.style.opacity = '0'; });
+            });
+
+            // --- Slider Logic ---
+            const slider = document.getElementById('electronSlider');
+            const valOxid = document.getElementById('val-oxidizing');
+            const valReduc = document.getElementById('val-reducing');
+            const valReact = document.getElementById('val-reactivity');
+            const valStab = document.getElementById('val-stability');
+            const confirmBtn = document.getElementById('confirmBtn');
+
+            function getLevel(val, type) {
+                if (type === 'loss') { if (val < 20) return "极强"; if (val < 40) return "强"; if (val < 60) return "中等"; if (val < 80) return "弱"; return "极弱"; }
+                else if (type === 'gain') { if (val > 80) return "极强"; if (val > 60) return "强"; if (val > 40) return "中等"; if (val > 20) return "弱"; return "极弱"; }
+                else if (type === 'active') { let dist = Math.abs(val - 50); if (dist > 35) return "非常活泼"; if (dist > 20) return "活泼"; if (dist > 10) return "一般"; return "惰性"; }
+                else if (type === 'stable') { let dist = Math.abs(val - 50); if (dist < 15) return "稳定"; if (dist < 30) return "一般"; return "不稳定"; }
+            }
+
+            function updateStats() {
+                const val = parseInt(slider.value);
+                valReduc.innerText = getLevel(val, 'loss');
+                valOxid.innerText = getLevel(val, 'gain');
+                valReact.innerText = getLevel(val, 'active');
+                valStab.innerText = getLevel(val, 'stable');
+            }
+            slider.addEventListener('input', updateStats);
+            updateStats();
+
+            let wrongAttempts = 0;
+            const correctRangeMax = 35;
+            const realFeValue = 20;
+
+            confirmBtn.onclick = checkProperties;
+
+            function checkProperties() {
+                const val = parseInt(slider.value);
+                const feedback = document.getElementById('feedbackBox');
+                const marker = document.getElementById('realMarker');
+                feedback.style.display = 'block';
+                feedback.className = 'feedback-msg';
+
+                if (val <= correctRangeMax) {
+                    handleSuccess(feedback, marker, confirmBtn);
+                } else {
+                    wrongAttempts++;
+                    if (wrongAttempts >= 3) {
+                        handleGiveUp(feedback, marker, confirmBtn);
+                    } else {
+                        feedback.classList.add('feedback-error');
+                        feedback.innerHTML = `<strong>判断偏差</strong><br>当前选择显示铁倾向于“${parseInt(slider.value) > 50 ? '得电子' : '保持中立'}”。请再次查看雷达图上的“原子半径”和“最外层趋近度”。`;
+                    }
+                }
+            }
+
+            function handleSuccess(el, marker, btn) {
+                el.classList.add('feedback-success');
+                marker.classList.add('visible');
+                smoothSlideTo(realFeValue);
+                el.innerHTML = `<strong>判断正确！</strong><br>铁 (Fe) 原子半径大、最外层仅2个电子，极易失去电子，表现出<strong>强还原性</strong>。`;
+                slider.disabled = true;
+                prepareNextStep(btn);
+            }
+
+            function handleGiveUp(el, marker, btn) {
+                el.classList.add('feedback-error');
+                marker.classList.add('visible');
+                smoothSlideTo(realFeValue);
+                el.innerHTML = `<strong>探索结束：揭示真相</strong><br>铁极易失去电子，是典型的还原剂。`;
+                slider.disabled = true;
+                prepareNextStep(btn);
+            }
+
+            function smoothSlideTo(target) {
+                const current = parseInt(slider.value);
+                if (current === target) return;
+                const step = current < target ? 1 : -1;
+                const interval = setInterval(() => {
+                    if (parseInt(slider.value) === target) { clearInterval(interval); updateStats(); } 
+                    else { slider.value = parseInt(slider.value) + step; updateStats(); }
+                }, 10);
+            }
+
+            function prepareNextStep(btn) {
+                btn.innerText = "进入化学性质验证";
+                btn.classList.add('btn-next');
+                btn.disabled = false;
+                btn.onclick = transitionToVerification;
+            }
+
+            function transitionToVerification() {
+                const view1 = document.getElementById('exploration-sub-view');
+                const view2 = document.getElementById('verification-sub-view');
+                view1.style.display = 'none';
+                view2.style.display = 'block';
+                setTimeout(() => {
+                    view2.style.opacity = '1';
+                    view2.style.transform = 'translateY(0)';
+                }, 10);
+            }
+
+            // --- Video Logic ---
+            let chemVideo1Done = false, chemVideo2Done = false;
+            let physVideo3Done = false, physVideo4Done = false;
+
+            window.activateVideo = function(id) {
+                const cover = document.getElementById(`cover-${id}`);
+                const video = document.getElementById(`video-${id}`);
+                const fsBtn = document.getElementById(`fs-${id}`);
+                const playIcon = document.getElementById(`play-icon-${id}`);
+
+                cover.style.opacity = '0';
+                setTimeout(() => cover.style.display = 'none', 300);
+                fsBtn.style.display = 'flex';
+
+                video.onclick = function() { togglePlay(id); };
+                video.play().catch(e => { playIcon.style.display = 'flex'; });
+                video.onplay = () => playIcon.style.display = 'none';
+                video.onpause = () => playIcon.style.display = 'flex';
+                
+                video.onended = () => {
+                    document.getElementById(`replay-${id}`).style.display = 'block';
+                    document.getElementById(`exp-${id}`).style.display = 'block';
+                    playIcon.style.display = 'none';
+                    checkVideoProgress(id);
+                };
+            };
+
+            function checkVideoProgress(id) {
+                if (id === '1') chemVideo1Done = true;
+                if (id === '2') chemVideo2Done = true;
+                if (id === '3') physVideo3Done = true;
+                if (id === '4') physVideo4Done = true;
+
+                if (chemVideo1Done && chemVideo2Done) document.getElementById('continue-btn-container-chem').classList.add('show');
+                if (physVideo3Done && physVideo4Done) document.getElementById('continue-btn-container-phys').classList.add('show');
+            }
+
+            window.togglePlay = function(id) {
+                const video = document.getElementById(`video-${id}`);
+                (video.paused || video.ended) ? video.play() : video.pause();
+            };
+
+            window.replayVideo = function(id) {
+                const video = document.getElementById(`video-${id}`);
+                document.getElementById(`replay-${id}`).style.display = 'none';
+                video.currentTime = 0;
+                video.play();
+            };
+
+            window.toggleFullscreen = function(id) {
+                const video = document.getElementById(`video-${id}`);
+                if (video.requestFullscreen) video.requestFullscreen();
+                else if (video.webkitRequestFullscreen) video.webkitRequestFullscreen();
+            };
+
+            // --- 核心导航逻辑 ---
+
+            // 1. 显示主页
+            window.showHome = function() {
+                toggleLayout(false); // 恢复分屏布局
+                switchView('home-view');
+                document.querySelectorAll('.video-layer').forEach(v => { if(v.tagName === 'VIDEO') v.pause(); });
+                
+                // 检查是否全部完成
+                if (chemCompleted && physCompleted) {
+                    showFinalDialogue();
+                } else {
+                    dialogueArea.style.opacity = '0';
+                }
+            };
+            
+            function showFinalDialogue() {
+                dialogueArea.style.opacity = '1';
+                updateDialogue("太棒了，你已完成元素性质的全面测评");
+                const nextBtn = document.getElementById('continueExploreBtn');
+                nextBtn.style.display = 'block';
+                // 修改：点击事件绑定到 startElementTrial
+                nextBtn.onclick = startElementTrial;
+            }
+
+            function switchView(viewId) {
+                document.querySelectorAll('.view-section').forEach(el => {
+                    el.style.opacity = '0';
+                    setTimeout(() => el.style.display = 'none', 500);
+                });
+                
+                const target = document.getElementById(viewId);
+                setTimeout(() => {
+                    target.style.display = 'flex'; 
+                    setTimeout(() => target.style.opacity = '1', 10);
+                }, 500);
+            }
+
+            // 2. 化学流
+            window.startChemicalFlow = function() {
+                toggleLayout(true); // 进入全屏布局
+
+                if (chemCompleted) {
+                    // 如果已完成：显示第一阶段页面，但状态为已完成
+                    document.getElementById('chem-back-btn').style.display = 'flex';
+                    
+                    // 强制显示探索子视图，隐藏验证子视图
+                    document.getElementById('exploration-sub-view').style.display = 'block';
+                    document.getElementById('verification-sub-view').style.display = 'none';
+                    document.getElementById('verification-sub-view').style.opacity = '0';
+
+                    // 设置为完成状态
+                    slider.value = 20; // 真实值
+                    slider.disabled = true;
+                    updateStats();
+                    document.getElementById('realMarker').classList.add('visible');
+                    
+                    // 显示反馈框
+                    const fb = document.getElementById('feedbackBox');
+                    fb.style.display = 'block';
+                    fb.className = 'feedback-msg feedback-success';
+                    fb.innerHTML = `<strong>探究已完成</strong><br>铁 (Fe) 表现出<strong>强还原性</strong>。`;
+
+                    // 更新按钮为跳转验证
+                    confirmBtn.innerText = "查看化学性质验证";
+                    confirmBtn.className = "btn-confirm btn-next";
+                    confirmBtn.disabled = false;
+                    confirmBtn.onclick = transitionToVerification;
+
+                    // 确保验证页面的继续按钮显示
+                    document.getElementById('continue-btn-container-chem').classList.add('show');
+
+                    switchView('chemical-view');
+                    return;
+                }
+
+                document.getElementById('chem-back-btn').style.display = 'none';
+                resetChemicalState();
+                switchView('chemical-view');
+            };
+
+            function resetChemicalState() {
+                slider.value = 50; slider.disabled = false; updateStats();
+                document.getElementById('realMarker').classList.remove('visible');
+                const fb = document.getElementById('feedbackBox');
+                fb.style.display = 'none'; fb.className = 'feedback-msg'; fb.innerHTML = '';
+                confirmBtn.innerText = "确认性质"; confirmBtn.className = "btn-confirm"; confirmBtn.disabled = false; confirmBtn.onclick = checkProperties;
+                wrongAttempts = 0;
+                
+                document.getElementById('exploration-sub-view').style.display = 'block';
+                document.getElementById('verification-sub-view').style.display = 'none';
+                document.getElementById('verification-sub-view').style.opacity = '0';
+                document.getElementById('verification-sub-view').style.transform = 'translateY(20px)';
+
+                resetVideoUI('1'); resetVideoUI('2');
+                chemVideo1Done = false; chemVideo2Done = false;
+                document.getElementById('continue-btn-container-chem').classList.remove('show');
+            }
+
+            window.finishChemicalFlow = function() {
+                chemCompleted = true;
+                const card = document.getElementById('card-chemical');
+                card.classList.add('completed');
+                const badge = document.getElementById('badge-chem');
+                badge.innerText = "探究完成";
+                badge.classList.remove('pending');
+                badge.classList.add('completed');
+                showHome();
+            };
+
+            // 3. 物理流
+            window.startPhysicalFlow = function() {
+                toggleLayout(true); // 进入全屏布局
+
+                if (physCompleted) {
+                    document.getElementById('phys-back-btn').style.display = 'flex';
+                    switchView('physical-view');
+                    return;
+                }
+
+                document.getElementById('phys-back-btn').style.display = 'none';
+                resetPhysicalState();
+                switchView('physical-view');
+            };
+
+            function resetPhysicalState() {
+                resetVideoUI('3'); resetVideoUI('4');
+                physVideo3Done = false; physVideo4Done = false;
+                document.getElementById('continue-btn-container-phys').classList.remove('show');
+            }
+
+            window.finishPhysicalFlow = function() {
+                physCompleted = true;
+                const card = document.getElementById('card-physical');
+                card.classList.add('completed');
+                const badge = document.getElementById('badge-phys');
+                badge.innerText = "探究完成";
+                badge.classList.remove('pending');
+                badge.classList.add('completed');
+                showHome();
+            };
+
+            function resetVideoUI(id) {
+                const video = document.getElementById(`video-${id}`);
+                video.pause(); video.currentTime = 0;
+                document.getElementById(`cover-${id}`).style.display = 'flex';
+                document.getElementById(`cover-${id}`).style.opacity = '1';
+                document.getElementById(`exp-${id}`).style.display = 'none';
+                document.getElementById(`replay-${id}`).style.display = 'none';
+                document.getElementById(`fs-${id}`).style.display = 'none';
+            }
+        }
+
+        // ==================== Puzzle Game Logic ====================
+        const ptGridPuzzle = document.getElementById('ptGridPuzzle');
+        const dragEl = document.getElementById('dragEl');
+        const feedbackMsg = document.getElementById('feedbackMsg');
+        const feedbackPanel = document.getElementById('feedbackPanel');
+        
+        // 目标：铁 (第4行，第8列)
+        const TARGET = { row: 4, col: 8 };
+        
+        // 错误计数器
+        let errorCount = 0;
+
+        // 族号映射 (CAS / IUPAC Old)
+        const groupLabels = [
+            { num: 1, roman: 'IA' }, { num: 2, roman: 'IIA' },
+            { num: 3, roman: 'IIIB' }, { num: 4, roman: 'IVB' },
+            { num: 5, roman: 'VB' }, { num: 6, roman: 'VIB' },
+            { num: 7, roman: 'VIIB' }, { num: 8, roman: 'VIII' },
+            { num: 9, roman: 'VIII' }, { num: 10, roman: 'VIII' },
+            { num: 11, roman: 'IB' }, { num: 12, roman: 'IIB' },
+            { num: 13, roman: 'IIIA' }, { num: 14, roman: 'IVA' },
+            { num: 15, roman: 'VA' }, { num: 16, roman: 'VIA' },
+            { num: 17, roman: 'VIIA' }, { num: 18, roman: 'VIIIA' }
+        ];
+
+        function createLabel(htmlContent, isHeader = false) {
+            const div = document.createElement('div');
+            div.className = 'pt-label';
+            if (isHeader) div.style.paddingBottom = '5px'; // 表头稍微留点空隙
+            div.innerHTML = htmlContent;
+            return div;
+        }
+
+        function initPuzzleGame() {
+            ptGridPuzzle.innerHTML = '';
+
+            // --- 1. 左上角坐标头 (Row 0, Col 0) ---
+            const cornerCell = document.createElement('div');
+            cornerCell.className = 'corner-header';
+            cornerCell.innerHTML = '<span class="txt-group">族</span><span class="txt-period">周期</span>';
+            ptGridPuzzle.appendChild(cornerCell);
+
+            // --- 2. 顶部族号 (Row 0, Cols 1-18) ---
+            groupLabels.forEach(g => {
+                const labelHtml = `${g.num}<span class="roman">${g.roman}</span>`;
+                ptGridPuzzle.appendChild(createLabel(labelHtml, true));
+            });
+
+            // --- 3. 主表内容 (Rows 1-7) ---
+            for (let row = 1; row <= 7; row++) {
+                // 每行开始前，插入周期号
+                ptGridPuzzle.appendChild(createLabel(row));
+
+                // 生成该行的18个单元格
+                for (let col = 1; col <= 18; col++) {
+                    const cell = document.createElement('div');
+                    
+                    // 布局空位逻辑
+                    let isEmpty = false;
+                    if (row === 1 && col > 1 && col < 18) isEmpty = true;
+                    if ((row === 2 || row === 3) && col > 2 && col < 13) isEmpty = true;
+
+                    if (isEmpty) {
+                        cell.className = 'pt-cell-puzzle empty';
+                    } else {
+                        cell.className = 'pt-cell-puzzle droppable';
+                        
+                        let z = getZ(row, col);
+                        
+                        if (z) {
+                            cell.dataset.row = row;
+                            cell.dataset.col = col;
+                            
+                            // 获取分类颜色类名
+                            const cat = getCategory(z, row, col);
+                            cell.classList.add(cat.class);
+                            cell.dataset.catName = cat.name;
+
+                            // 绑定事件
+                            cell.addEventListener('dragover', handleDragOver);
+                            cell.addEventListener('drop', handleDrop);
+                        }
+                    }
+                    ptGridPuzzle.appendChild(cell);
+                }
+            }
+
+            // 间隔行 (跨越所有列)
+            const gap = document.createElement('div');
+            gap.className = 'pt-cell-puzzle gap-row';
+            ptGridPuzzle.appendChild(gap);
+
+            // 镧系 (57-71)
+            renderSeries(57, 71, 'bg-lanthanide', '镧系元素');
+            // 锕系 (89-103)
+            renderSeries(89, 103, 'bg-actinide', '锕系元素');
+        }
+
+        function renderSeries(start, end, bgClass, catName) {
+            // 第一列是周期号列，这里留空
+            ptGridPuzzle.appendChild(createLabel(''));
+
+            // 镧系/锕系通常在第3列之后开始显示
+            for(let k=0; k<3; k++) ptGridPuzzle.appendChild(document.createElement('div'));
+            
+            for(let z=start; z<=end; z++) {
+                const cell = document.createElement('div');
+                cell.className = `pt-cell-puzzle droppable ${bgClass}`;
+                cell.dataset.catName = catName;
+                cell.addEventListener('dragover', handleDragOver);
+                cell.addEventListener('drop', handleDrop);
+                ptGridPuzzle.appendChild(cell);
+            }
+        }
+
+        // --- 辅助逻辑 ---
+        function getZ(r, c) {
+            if (r === 1) return c === 1 ? 1 : 2;
+            if (r === 2) return c <= 2 ? 2 + c : 4 + c;
+            if (r === 3) return c <= 2 ? 10 + c : 12 + c;
+            if (r === 4) return 18 + c;
+            if (r === 5) return 36 + c;
+            if (r === 6) {
+                if (c <= 2) return 54 + c;
+                if (c === 3) return "57-71"; 
+                return 71 + (c - 3);
+            }
+            if (r === 7) {
+                if (c <= 2) return 86 + c;
+                if (c === 3) return "89-103";
+                return 103 + (c - 3);
+            }
+            return null;
+        }
+
+        function getCategory(z, r, c) {
+            if (typeof z === 'string') {
+                if(z.startsWith('57')) return {class:'bg-lanthanide', name:'镧系元素'};
+                if(z.startsWith('89')) return {class:'bg-actinide', name:'锕系元素'};
+            }
+            if (z === 1) return {class:'bg-nonmetal', name:'非金属'};
+            if (c === 18) return {class:'bg-noble', name:'稀有气体'};
+            if (c === 1) return {class:'bg-alkali', name:'碱金属'};
+            if (c === 2) return {class:'bg-alkaline-e', name:'碱土金属'};
+            if (c >= 3 && c <= 12) return {class:'bg-transition', name:'过渡金属'};
+            if (c === 17) return {class:'bg-halogen', name:'卤素'};
+            
+            const metals = [13, 31, 49, 50, 81, 82, 83, 113, 114, 115, 116]; 
+            const metalloids = [5, 14, 32, 33, 51, 52, 84]; 
+            
+            if (metals.includes(z)) return {class:'bg-main-metal', name:'主族金属'};
+            if (metalloids.includes(z)) return {class:'bg-metalloid', name:'类金属'};
+            return {class:'bg-nonmetal', name:'非金属'};
+        }
+
+        // --- 拖拽逻辑 ---
+        dragEl.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', 'Fe');
+            dragEl.style.opacity = '0.5';
+            updateFeedback(false);
+        });
+
+        dragEl.addEventListener('dragend', () => {
+            dragEl.style.opacity = '1';
+        });
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            this.classList.add('drag-over');
+        }
+
+        document.addEventListener('dragleave', (e) => {
+            if(e.target.classList.contains('pt-cell-puzzle')) {
+                e.target.classList.remove('drag-over');
+            }
+        }, true);
+
+        function handleDrop(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            
+            const r = parseInt(this.dataset.row);
+            const c = parseInt(this.dataset.col);
+
+            if (r === TARGET.row && c === TARGET.col) {
+                successDrop(this);
+            } else {
+                failDrop(this);
+            }
+        }
+
+        function successDrop(cell) {
+            dragEl.classList.add('hidden');
+            cell.classList.add('filled');
+            cell.innerText = "Fe"; 
+            
+            feedbackMsg.innerHTML = "✅ <strong>完美归位！</strong><br>铁 (Fe) 位于第 4 周期，第 8 族，属于过渡金属。";
+            feedbackPanel.style.borderLeftColor = "#4ade80"; 
+            feedbackPanel.style.background = "rgba(74, 222, 128, 0.2)";
+            
+            // 显示完成归位按钮
+            completePuzzleBtn.style.display = 'block';
+        }
+
+        function failDrop(cell) {
+            errorCount++;
+            dragEl.classList.remove('shake');
+            void dragEl.offsetWidth; 
+            dragEl.classList.add('shake');
+            feedbackPanel.style.borderLeftColor = "#f87171";
+            feedbackPanel.style.background = "rgba(248, 113, 113, 0.2)";
+            updateFeedback(true);
+        }
+
+        function updateFeedback(isErrorState) {
+            let msg = "";
+            let prefix = isErrorState ? "❌ <strong>位置错误：</strong>" : "💡 <strong>提示：</strong>";
+
+            if (errorCount < 2) {
+                msg = `${prefix} 注意回忆铁元素的性质，将其放在正确的位置上。`;
+            } else if (errorCount < 5) {
+                msg = `${prefix} 铁属于 <strong>过渡金属</strong>，请在 <span style='background:var(--c-transition); color:#000; padding:0 4px;'>黄色区域</span> 寻找。`;
+            } else {
+                msg = `${prefix} 铁位于 <strong>第 4 周期，第 8 族</strong>。`;
+            }
+
+            feedbackMsg.innerHTML = msg;
+        }
+
+        function resetGame() {
+            errorCount = 0;
+            dragEl.classList.remove('hidden', 'shake');
+            document.getElementById('startZone').appendChild(dragEl);
+            initPuzzleGame(); 
+            feedbackMsg.innerHTML = "检测到游离元素 <strong>铁 (Fe)</strong>。<br>请将其拖入周期表中正确的位置。";
+            feedbackPanel.style.borderLeftColor = "#94a3b8";
+            feedbackPanel.style.background = "rgba(0,0,0,0.2)";
+            
+            // 隐藏完成归位按钮
+            completePuzzleBtn.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
